@@ -1,0 +1,191 @@
+---
+interface Props {
+  title: string;
+  description: string;
+  date: Date;
+}
+
+const { title, description, date } = Astro.props;
+import BaseLayout from "../../layouts/BaseLayout.astro";
+---
+
+<BaseLayout title={title}>
+  <article class="prose prose-invert mx-auto max-w-3xl prose-pre:p-0 prose-h1:text-4xl prose-h2:text-3xl prose-h3:text-2xl prose-h4:text-xl prose-strong:text-white/90 prose-a:text-blue-400 hover:prose-a:text-blue-300 prose-code:text-blue-300 prose-blockquote:border-blue-500">
+    <header class="not-prose mb-16">
+      <time class="text-sm text-gray-400">
+        {
+          new Date(date).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric"
+          })
+        }
+      </time>
+      <h1 class="text-4xl font-bold mt-2 mb-4">{title}</h1>
+      <p class="text-gray-400 text-lg">{description}</p>
+    </header>
+    <slot />
+  </article>
+</BaseLayout>
+
+<style is:global>
+  /* Modern scrollbar for the entire site */
+  :root {
+    scrollbar-color: rgb(64, 64, 64) rgb(32, 32, 32);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: rgb(32, 32, 32);
+    border-radius: 5px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgb(64, 64, 64);
+    border-radius: 5px;
+    border: 2px solid rgb(32, 32, 32);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(96, 96, 96);
+  }
+
+  /* Modern code block styling */
+  .prose pre {
+    background-color: #1a1b26 !important;
+    border-radius: 0.5rem;
+    margin: 2rem 0;
+    overflow-x: auto;
+  }
+
+  .prose pre code {
+    display: grid;
+    padding: 1.5rem;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    background-color: transparent;
+    border-radius: 0;
+  }
+
+  /* Hide backticks in inline code */
+  .prose code::before,
+  .prose code::after {
+    display: none !important;
+  }
+
+  /* Inline code styling */
+  .prose :not(pre) > code {
+    background-color: rgb(29, 31, 39);
+    padding: 0.2em 0.4em;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+    font-weight: 500;
+  }
+
+  /* Enhanced link underlines */
+  .prose a {
+    text-decoration: none;
+    background-image: linear-gradient(transparent 60%, rgb(59, 130, 246, 0.2) 40%);
+    background-position: 0 100%;
+    background-repeat: repeat-x;
+    background-size: 100% 100%;
+    transition: all 0.2s ease;
+  }
+
+  .prose a:hover {
+    background-image: linear-gradient(transparent 0%, rgb(59, 130, 246, 0.2) 100%);
+  }
+
+  /* Better blockquotes */
+  .prose blockquote {
+    border-left-width: 3px;
+    margin: 2rem 0;
+    padding: 1rem 1.5rem;
+    background-color: rgb(29, 31, 39);
+    border-radius: 0.5rem;
+  }
+
+  /* List styling */
+  .prose ul li::marker {
+    color: rgb(59, 130, 246);
+  }
+
+  .prose ol li::marker {
+    color: rgb(59, 130, 246);
+  }
+
+  /* Table styling */
+  .prose table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 2rem 0;
+  }
+
+  .prose th {
+    background-color: rgb(29, 31, 39);
+    padding: 0.75rem 1rem;
+    text-align: left;
+  }
+
+  .prose td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid rgb(55, 65, 81);
+  }
+
+  /* Heading anchor links */
+  .prose h2,
+  .prose h3,
+  .prose h4 {
+    scroll-margin-top: 100px;
+  }
+
+  /* Sticky headers */
+  .prose h2,
+  .prose h3,
+  .prose h4 {
+    scroll-margin-top: 0;
+    position: sticky;
+    background-color: rgba(23, 23, 23, 0.8); /* bg-neutral-900 with opacity */
+    backdrop-filter: blur(8px);
+    margin: 0 !important;
+    padding: 1rem 0;
+    z-index: 10;
+    border-bottom: 1px solid rgba(75, 85, 99, 0.2);
+    width: 100%;
+  }
+
+  /* Content spacing */
+  .prose > div > *:not(h2):not(h3):not(h4) {
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  /* First heading should have no top margin */
+  .prose > div > h2:first-child,
+  .prose > div > h3:first-child,
+  .prose > div > h4:first-child {
+    margin-top: 0;
+    padding-top: 0;
+  }
+
+  /* Hierarchy adjustments */
+  .prose h2 { 
+    top: 0;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+  .prose h3 { 
+    top: 3.5rem;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+  .prose h4 { 
+    top: 6.5rem;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+</style>

@@ -1,0 +1,457 @@
+---
+title: How Effect Simplifies Your TypeScript Code
+date: 2024-11-03
+description: "An exploration of modern web development practices and how they're shaping the future of the internet. We'll dive into recent trends and emerging technologies."
+---
+
+import Youtube from "../components/Youtube.astro";
+
+<Youtube id="X_Qgm7AawUc" />
+
+This blog post is also available as a video on YouTube above.
+
+I've released several videos on Effect, and while it's an incredibly powerful library, I've received many comments suggesting that it feels too complex and that its steep learning curve doesn't justify the potential benefits of writing more robust code.
+
+So, I've decided to create an exercise for you. The idea is simple: try solving the following challenge with whatever libraries you're comfortable with (or even "vanilla" TypeScript - whatever you prefer). Then, I'll walk you through the solution using Effect, and I want you to be the judge of whether the library has real merit or not.
+
+### Exercise
+
+Let's implement a refresh session mechanism integrated into an HTTP client with the following requirements:
+
+1. Ensure only one computation triggers the refresh process at a time - concurrent refresh operations must be prevented.
+2. Set a default timeout of 5 seconds for the session refresh request to handle transient errors.
+3. Validate that the response body matches the type `{ readonly newAccessToken: string }`
+4. Implement a retry mechanism for the refresh function that:
+   - Retries on all errors except 401 (unauthorized) and parse exceptions
+   - Uses exponential backoff starting at 1.5 seconds with a 1.5x multiplier
+   - Limits retries to 3 attempts
+5. Enable consumers to determine if their original operation should be retried after a refresh. Upon successful refresh, both the initiating request and any queued requests should retry their original operations.
+6. Queue all concurrent requests while a session refresh is in progress (since we know they'll fail with 401, let's avoid making them altogether).
+
+Bonus challenges: 7. Design the solution to be composable with support for dependency injection. 8. Implement telemetry by:
+
+- Adding spans for all key operations
+- Creating a trace for the entire request lifecycle
+- Including relevant attributes in spans (request URL, response status, etc.)
+
+### Implementation Walkthrough
+
+#### Scaffolding Our Program
+
+We'll start off by declaring our access layer for our tokens. For this example, we'll store them in a reference, though in a real application, you'd most likely retrieve them from:
+
+- A database lookup
+- Request headers
+- Local storage (unsecure, but incredibly common)
+
+For demonstration purposes, we're going to use Effect's `Ref` to store our tokens, which gives us a way to handle mutable state immutably. This `Ref` will act as our source of truth for the current authentication tokens:
+
+```ts
+import { Effect, Ref, Schema } from "effect";
+
+class AuthTokens extends Schema.Class<AuthTokens>("AuthTokens")({
+  accessToken: Schema.String,
+  refreshToken: Schema.String
+}) {}
+
+const program = Effect.gen(function* () {
+  const accessTokensRef = yield* Ref.make(
+    AuthTokens.make({
+      accessToken: "access-token",
+      refreshToken: "refresh-token"
+    })
+  );
+});
+```
+
+A quick note about `Schema`: By using `Schema.Class`, we get several powerful features in one go:
+
+- An opaque type (you can write `const authTokens: AuthTokens = { ... }`)
+- A constructor via `AuthTokens.make` (which validates the schema at runtime)
+- A validator through `Schema.decodeUnknown(AuthTokens)` for handling unknown data
+- An encoder via `Schema.encode` for transformations like encryption
+
+#### Refresh Method
+
+Now, let's use `HttpClient` from `@effect/platform` to make our request to refresh the session:
+
+```ts
+import { HttpBody, HttpClient } from "@effect/platform";
+import { Effect, Ref, Schema } from "effect";
+
+class AuthTokens extends Schema.Class<AuthTokens>("AuthTokens")({
+  // ...
+}) {}
+
+class RefreshResult extends Schema.Class<RefreshResult>("RefreshResult")({
+  newAccessToken: Schema.String,
+  newRefreshToken: Schema.String
+}) {
+  public static readonly decodeUnknown = Schema.decodeUnknown(this);
+}
+
+const program = Effect.gen(function* () {
+  const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.filterStatusOk);
+
+  const accessTokensRef = yield* Ref.make(
+    AuthTokens.make({
+      accessToken: "access-token",
+      refreshToken: "refresh-token"
+    })
+  );
+
+  const refresh = Effect.gen(function* () {
+    const tokens = yield* Ref.get(accessTokensRef);
+
+    const response = yield* httpClient.post("...", {
+      body: HttpBody.unsafeJson({
+        refreshToken: tokens.refreshToken
+      })
+    });
+
+    const json = yield* response.json;
+
+    const result = yield* RefreshResult.decodeUnknown(json);
+
+    yield* Ref.update(accessTokensRef, () => ({
+      accessToken: result.newAccessToken,
+      refreshToken: result.newRefreshToken
+    }));
+  });
+});
+```
+
+As you can see, this isn't too different from traditional async/await code. The magic happens when we use `@effect/platform`: it automatically exposes all possible errors (`ResponseError` and `RequestError`) and sets up spans for you. This means when you connect it to telemetry, all these operations are automatically tracked and registered.
+
+#### Implementing Concurrent Access Control
+
+Now let's tackle our first major challenge: ensuring that only one refresh operation can happen at a time.
+
+For this, we'll use `withSemaphore(1)`. If you're new to semaphores, think of them as bouncers at a club who control how many people can enter at once. A semaphore with one permit (like we're using) is essentially a mutex - it ensures only one piece of code can run at a time:
+
+```ts
+const program = Effect.gen(function* () {
+  // ...
+
+  const semaphore = yield* Effect.makeSemaphore(1);
+
+  const refresh = Effect.gen(function* () {
+    const tokens = yield* Ref.get(accessTokensRef);
+
+    const response = yield* httpClient.post("...", {
+      body: HttpBody.unsafeJson({
+        refreshToken: tokens.refreshToken
+      })
+    });
+
+    const json = yield* response.json;
+
+    const result = yield* RefreshResult.decodeUnknown(json);
+
+    yield* Ref.update(accessTokensRef, () => ({
+      accessToken: result.newAccessToken,
+      refreshToken: result.newRefreshToken
+    }));
+  }).pipe(semaphore.withPermits(1));
+});
+```
+
+All it takes is two lines of code, and just like that, we've guaranteed that our refresh operation runs exclusively - only one refresh can happen at a time, no matter how many concurrent requests we receive.
+
+#### Implementing a Notification Mechanism
+
+However, there's a major issue in our current implementation. While requests are being queued up during a session refresh, nothing prevents each of them from triggering their own refresh once they reach the front of the queue. So, after the first refresh completes, the next request would trigger another refresh, and so on. We also lack a mechanism to tell the initiators to retry their original operation after a successful refresh.
+
+To solve this, we'll use two powerful features:
+
+1. Actionable errors - these let both the initial request, and any queued requests know when they should retry their original operations
+2. Effect's `DateTime` module - a built-in alternative to libraries like `luxon` and `momentjs`
+
+The plan is simple: when we successfully refresh the session, we will expose a `ForceRetryError` allowing the initiator to retry the operation, and we'll also keep track of when we last refreshed the session in a shared reference. When a queued request tries to refresh the session, we'll check if it was recently refreshed - if so, we'll fail with the same `ForceRetryError` telling the request to try again:
+
+```ts
+import { HttpBody, HttpClient } from "@effect/platform";
+import { Data, DateTime, Effect, Option, Ref, Schema } from "effect";
+
+// ...
+
+class ForceRetryError extends Data.TaggedError("ForceRetryError") {}
+
+const program = Effect.gen(function* () {
+  // ...
+
+  const timeSinceLastRefresh = yield* Ref.make<Option.Option<DateTime.DateTime>>(Option.none());
+
+  const refresh = Effect.gen(function* () {
+    const now = yield* DateTime.now;
+    const hasRecentlyRefreshed = Option.match(yield* timeSinceLastRefresh, {
+      onSome: DateTime.greaterThan(DateTime.subtract(now, { minutes: 5 })),
+      onNone: () => false
+    });
+    if (hasRecentlyRefreshed) return yield* new ForceRetryError();
+
+    const tokens = yield* Ref.get(accessTokensRef);
+
+    const response = yield* httpClient.post("...", {
+      body: HttpBody.unsafeJson({
+        refreshToken: tokens.refreshToken
+      })
+    });
+
+    const json = yield* response.json;
+
+    const result = yield* RefreshResult.decodeUnknown(json);
+
+    yield* Ref.update(accessTokensRef, () => ({
+      accessToken: result.newAccessToken,
+      refreshToken: result.newRefreshToken
+    }));
+
+    return yield* new ForceRetryError();
+  }).pipe(semaphore.withPermits(1));
+});
+```
+
+Now, with this, our `refresh` computation has the following type signature:
+
+```ts
+const refresh: Effect.Effect<never, ParseError | ForceRetryError | HttpClientError, Scope>;
+```
+
+This tells us our computation can fail with three types of errors:
+
+- `HttpClientError`: Covers both `RequestError` and `ResponseError`
+- `ParseError`: From validating our response with `RefreshResult.decodeUnknown`
+- `ForceRetryError`: Our custom error for handling retry logic
+
+You'll also notice our use of `Option` here - it helps us write more declarative code through its `Option.match` method, making our intentions a little clearer.
+
+#### Implementing Timeout & Retry Policies
+
+Now, let's tackle the next requirements from our exercise: adding a 5-second timeout for session refreshes and implementing retries with exponential backoff (except for 401s and parse errors).
+
+With Effect, it's surprisingly simple; all you need is `Effect.timeout` and `Effect.retry`, and you're good to go:
+
+```ts
+const program = Effect.gen(function* () {
+  // ...
+
+  const refresh = Effect.gen(function* () {
+    // ...
+
+    const response = yield* httpClient.post("...", {
+      body: HttpBody.unsafeJson({
+        refreshToken: tokens.refreshToken
+      })
+    });
+
+    const json = yield* response.json;
+
+    const result = yield* RefreshResult.decodeUnknown(json).pipe(Effect.orDie);
+
+    yield* Ref.update(accessTokensRef, () => ({
+      accessToken: result.newAccessToken,
+      refreshToken: result.newRefreshToken
+    }));
+
+    return yield* new ForceRetryError();
+  }).pipe(
+    Effect.catchIf(
+      (error) => error._tag === "ResponseError" && error.response.status === 401,
+      () => Effect.dieMessage("Definitely not authenticated")
+    ),
+    Effect.timeout("5 seconds"),
+    Effect.retry({
+      times: 3,
+      schedule: Schedule.exponential("1.5 seconds", 1.5),
+      while: (error) => error._tag !== "ForceRetryError"
+    }),
+    Effect.catchAll((error) => (error._tag !== "ForceRetryError" ? Effect.die(error) : error)),
+    semaphore.withPermits(1)
+  );
+});
+```
+
+Notice our liberal use of `die` throughout the implementation:
+
+- We've added an `Effect.orDie` to the `RefreshResult.decodeUnknown` operation
+- We use `Effect.dieMessage` if we get a `401`
+- Finally, we apply `Effect.die` after exhausting all retries and timeout policies for every error type except `ForceRetryError`.
+
+This systematic use of `die` reflects our error handling strategy: once we've exhausted our recovery mechanisms, we convert recoverable errors into terminal defects.
+
+Now, for this, you need to understand that there are two fundamental types of errors:
+
+- Expected errors: These are actionable errors that consumers can meaningfully handle
+- Defects: These are fundamental program errors that consumers cannot reasonably handle
+
+In our implementation, we've decided that `ForceRetryError` should be the only expected error exposed to consumers. You might wonder why we don't expose other errors like `RequestError`, `ResponseError`, or `ParseError`. Here's my reasoning: errors ultimately fall into two categories - actionable and non-actionable.
+
+Since we know defects are inherently non-actionable, we often need to transform initially actionable errors _into_ non-actionable ones:
+
+- `ParseError` is non-actionable: If decoding fails, retrying won't help – it's guaranteed to fail again.
+- `ResponseError` and `RequestError` start as actionable errors, but we convert them to defects after exhausting our retries. This prevents consumers from retrying errors that don't actually belong to their context. For example, when making a `/get` request for todos, your `HttpClient` will automatically handle refresh on a 401. Exposing a `ResponseError` here could mix errors from the refresh mechanism with errors from the actual todos request.
+- `TimeoutException` follows the same pattern: while initially actionable, we convert it to a defect after our retry strategy is exhausted.
+
+My advice is to be selective about exposing errors. Only expose truly actionable errors, and don't hesitate to use `die`. As long as you have proper telemetry set up (which Effect makes remarkably easy), this approach is very maintainable.
+
+#### Implementing the Latch
+
+All that's left (outside of the bonus requirements) is to queue all concurrent requests if a session refresh is in progress, to prevent making unnecessary requests that we know will fail with a 401. Now, I'm not talking about the semaphore we just implemented - that one works perfectly for when concurrent operations get a 401 and need to refresh the session.
+
+I'm talking about preventing requests when a refresh operation is already in progress.
+
+For this, we can use `Effect.makeLatch`. If you're unfamiliar with latches, they are simple mechanisms that either block or allow operations to proceed based on whether they're open or closed. They are similar to semaphores, except that you explicitly choose which operations to protect with `whenOpen`, and any operation can close the latch to block those protected operations:
+
+```ts
+const accessTokensRef =
+  yield *
+  Ref.make(
+    AuthTokens.make({
+      accessToken: "access-token",
+      refreshToken: "refresh-token"
+    })
+  );
+const tokensLatch = yield * Effect.makeLatch(true);
+const getTokens = tokensLatch.whenOpen(Ref.get(accessTokensRef));
+
+const refresh = Effect.gen(function* () {
+  // ...
+  if (hasRecentlyRefreshed) return yield* new ForceRetryError();
+
+  yield* tokensLatch.close;
+
+  const tokens = yield* Ref.get(accessTokensRef);
+
+  // ...
+}).pipe(
+  // ...
+  Effect.ensuring(tokensLatch.open),
+  semaphore.withPermits(1)
+);
+
+const makeRequest = Effect.gen(function* () {
+  const tokens = yield* getTokens;
+
+  const response = yield* httpClient.get("...", {
+    headers: { Authorization: `Bearer: ${tokens.accessToken}` }
+  });
+
+  // ...
+});
+```
+
+Notice how we create a new latch with `Effect.makeLatch(true)` - the `true` indicates it starts in an open state. Then, we protect our `Ref.get(accessTokensRef)` operation with `whenOpen`, which means any time we try to read tokens, this operation will be queued if the latch is closed. In the refresh operation, we immediately close the latch with `tokensLatch.close`, and we use `Effect.ensuring` to guarantee that `tokensLatch.open` is executed even if the parent computation fails with a defect or error.
+
+#### Bonus Implementation
+
+Now, we're pretty much done! We have two final tasks:
+
+1. Add spans for telemetry
+2. Make our solution injectable as a service (including a custom `HttpClient`, similar to an Axios client)
+
+Adding spans is beautifully simple in Effect. We just use `Effect.withSpan("...")` and Effect's runtime automatically manages the parent-child relationships:
+
+```ts
+const refresh = Effect.gen(function* () {}).pipe(
+  // ...
+  Effect.withSpan("refresh")
+);
+```
+
+And since `HttpClient` already adds spans for requests internally, that's all we need for telemetry!
+
+Now, for dependency injection, we'll use `Effect.Service` to create our injectable services:
+
+```ts
+class Session extends Effect.Service<Session>()("Session", {
+  effect: Effect.gen(function* () {
+    const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.filterStatusOk);
+
+    const accessTokensRef = yield* Ref.make(
+      AuthTokens.make({
+        accessToken: "access-token",
+        refreshToken: "refresh-token"
+      })
+    );
+    const tokensLatch = yield* Effect.makeLatch(true);
+    const getTokens = tokensLatch.whenOpen(Ref.get(accessTokensRef));
+
+    const semaphore = yield* Effect.makeSemaphore(1);
+
+    const timeSinceLastRefresh = yield* Ref.make<Option.Option<DateTime.DateTime>>(Option.none());
+
+    const refreshSession = Effect.gen(function* () {
+      // ...
+    }).pipe(
+      // ...
+      Effect.ensuring(tokensLatch.open),
+      Effect.withSpan("refresh"),
+      semaphore.withPermits(1)
+    );
+
+    return {
+      refreshSession,
+      getTokens
+    };
+  }),
+  dependencies: [FetchHttpClient.layer]
+}) {}
+
+class CustomHttpClient extends Effect.Service<CustomHttpClient>()("CustomHttpClient", {
+  effect: Effect.gen(function* () {
+    const session = yield* Session;
+
+    return (yield* HttpClient.HttpClient).pipe(
+      HttpClient.filterStatusOk,
+      HttpClient.mapRequestEffect((request) =>
+        Effect.gen(function* () {
+          const tokens = yield* session.getTokens;
+
+          return request.pipe(
+            HttpClientRequest.bearerToken(tokens.accessToken),
+            HttpClientRequest.prependUrl("https://...")
+          );
+        })
+      ),
+      HttpClient.catchTags({
+        ResponseError: (error) => (error.response.status === 401 ? session.refreshSession : Effect.fail(error))
+      }),
+      HttpClient.retry({
+        times: 1,
+        while: (error) => error._tag === "ForceRetryError"
+      }),
+      HttpClient.catchTags({
+        ForceRetryError: Effect.die
+      })
+    );
+  }),
+  dependencies: [FetchHttpClient.layer, Session.Default]
+}) {}
+```
+
+And that's it! Using our implementation is as simple as consuming the service - all requests will automatically handle session refreshes on 401s and retry the original operation:
+
+```ts
+const program = Effect.gen(function* () {
+  const httpClient = yield* CustomHttpClient;
+
+  return yield* httpClient.get("...");
+});
+
+program.pipe(Effect.provide(CustomHttpClient.Default), Effect.scoped, Effect.runPromise);
+```
+
+### Conclusion
+
+What I love about Effect is how it lets me focus on business logic instead of getting lost in implementation details. Without Effect, this same solution would easily span 400+ lines of code, and its intent wouldn't be nearly as clear at first glance.
+
+In the end, it's all about the scope of the project. If what you're doing is a simple CLI, a basic front-end, simple authenticated APIs acting as proxies, or whatever along these lines, Effect can be "overkill".
+
+But here's the thing: every project starts out with the mindset of "We don't need X, we'll keep it simple." But as the project grows, requirements inevitably expand, edge cases multiply, and what was once "simple" can quickly become a tangled mess.
+
+Before you know it, you're reinventing the wheel, cobbling together hacky solutions for problems that more robust frameworks or libraries have already solved elegantly, and suddenly, that "overkill" technology doesn't seem so excessive anymore.
+
+If you're still on the fence on whether to use Effect or not, give it a try! Spend a weekend playing around with it - what's the worst that could happen? :)
+
+Full implementation: https://effect.website/play#f020d2cf277e
