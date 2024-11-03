@@ -5,7 +5,7 @@ interface Props {
   date: Date;
 }
 
-const { title, description, date } = Astro.props;
+const { title, date } = Astro.props;
 import BaseLayout from "../../layouts/BaseLayout.astro";
 ---
 
@@ -41,51 +41,41 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
       const scrollingDown = scrollY > lastScrollY;
       lastScrollY = scrollY;
 
-      // Find the appropriate heading based on scroll position
       let newStickyHeading: Element | null = null;
 
       headings.forEach((heading) => {
         const rect = heading.getBoundingClientRect();
 
         if (scrollingDown) {
-          // When scrolling down, make heading sticky when it reaches the top
           if (rect.top <= 10 && rect.bottom > 10) {
             newStickyHeading = heading;
           }
         } else {
-          // When scrolling up, make heading sticky when it's near the top
           if (rect.top <= 10) {
             newStickyHeading = heading;
           }
         }
       });
 
-      // If we found a heading that should be sticky
       if (newStickyHeading && newStickyHeading !== currentStickyHeading) {
-        // Make all headings non-sticky
         headings.forEach((h) => {
           (h as HTMLElement).style.position = "static";
         });
 
-        // Make the new heading sticky
         (newStickyHeading as HTMLElement).style.position = "sticky";
         currentStickyHeading = newStickyHeading;
       }
     }
 
-    // Listen to scroll events
     window.addEventListener("scroll", updateStickyHeading, { passive: true });
 
-    // Initial setup
     headings.forEach((heading) => {
       (heading as HTMLElement).style.position = "static";
     });
 
-    // Make the first heading sticky initially if it's at the top
     updateStickyHeading();
   }
 
-  // Run on page load
   handleStickyHeaders();
 </script>
 
