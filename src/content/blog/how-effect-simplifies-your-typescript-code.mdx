@@ -28,7 +28,7 @@ Let's implement a refresh session mechanism integrated into an HTTP client with 
 5. Enable consumers to determine if their original operation should be retried after a refresh. Upon successful refresh, both the initiating request and any queued requests should retry their original operations.
 6. Queue all concurrent requests while a session refresh is in progress.
 
-### Bonus
+Bonus:
 
 7. Design the solution to be composable with support for dependency injection.
 8. Implement telemetry by:
