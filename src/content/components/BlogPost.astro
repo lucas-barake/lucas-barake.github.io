@@ -114,12 +114,13 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
   }
 
   .prose pre code {
-    display: grid;
+    display: block;
     padding: 1.5rem;
     font-size: 0.875rem;
     line-height: 1.6;
     background-color: transparent;
     border-radius: 0;
+    white-space: pre;
   }
 
   /* Hide backticks in inline code */
@@ -225,8 +226,6 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
   .prose h4 + * {
     margin-top: 2rem !important;
   }
-
-  /* Remove the hierarchy adjustments section entirely as we're using a different approach */
 
   /* Content spacing */
   .prose > div > *:not(h2):not(h3):not(h4) {

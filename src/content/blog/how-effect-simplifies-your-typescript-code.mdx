@@ -304,40 +304,40 @@ I'm talking about preventing requests when a refresh operation is already in pro
 For this, we can use `Effect.makeLatch`. If you're unfamiliar with latches, they are simple mechanisms that either block or allow operations to proceed based on whether they're open or closed. They are similar to semaphores, except that you explicitly choose which operations to protect with `whenOpen`, and any operation can close the latch to block those protected operations:
 
 ```ts
-const accessTokensRef =
-  yield *
-  Ref.make(
+const program = Effect.gen(function* () {
+  const accessTokensRef = yield* Ref.make(
     AuthTokens.make({
       accessToken: "access-token",
       refreshToken: "refresh-token"
     })
   );
-const tokensLatch = yield * Effect.makeLatch(true);
-const getTokens = tokensLatch.whenOpen(Ref.get(accessTokensRef));
+  const tokensLatch = yield* Effect.makeLatch(true);
+  const getTokens = tokensLatch.whenOpen(Ref.get(accessTokensRef));
 
-const refresh = Effect.gen(function* () {
-  // ...
-  if (hasRecentlyRefreshed) return yield* new ForceRetryError();
+  const refresh = Effect.gen(function* () {
+    // ...
+    if (hasRecentlyRefreshed) return yield* new ForceRetryError();
 
-  yield* tokensLatch.close;
+    yield* tokensLatch.close;
 
-  const tokens = yield* Ref.get(accessTokensRef);
+    const tokens = yield* Ref.get(accessTokensRef);
 
-  // ...
-}).pipe(
-  // ...
-  Effect.ensuring(tokensLatch.open),
-  semaphore.withPermits(1)
-);
+    // ...
+  }).pipe(
+    // ...
+    Effect.ensuring(tokensLatch.open),
+    semaphore.withPermits(1)
+  );
 
-const makeRequest = Effect.gen(function* () {
-  const tokens = yield* getTokens;
+  const makeRequest = Effect.gen(function* () {
+    const tokens = yield* getTokens;
 
-  const response = yield* httpClient.get("...", {
-    headers: { Authorization: `Bearer: ${tokens.accessToken}` }
+    const response = yield* httpClient.get("...", {
+      headers: { Authorization: `Bearer: ${tokens.accessToken}` }
+    });
+
+    // ...
   });
-
-  // ...
 });
 ```
 
