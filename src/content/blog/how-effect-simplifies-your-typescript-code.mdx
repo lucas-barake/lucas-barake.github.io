@@ -1,7 +1,7 @@
 ---
 title: How Effect Simplifies Your TypeScript Code
 date: 2024-11-03
-description: "An exploration of modern web development practices and how they're shaping the future of the internet. We'll dive into recent trends and emerging technologies."
+description: "Effect can feel overwhelming with its steep learning curve. Is it really worth the complexity? In this blog post, we'll solve a real-world challenge and let you be the judge of whether Effect's benefits outweigh its learning curve."
 ---
 
 import Youtube from "../components/Youtube.astro";
@@ -14,7 +14,7 @@ I've released several videos on Effect, and while it's an incredibly powerful li
 
 So, I've decided to create an exercise for you. The idea is simple: try solving the following challenge with whatever libraries you're comfortable with (or even "vanilla" TypeScript - whatever you prefer). Then, I'll walk you through the solution using Effect, and I want you to be the judge of whether the library has real merit or not.
 
-### Exercise
+## The Challenge
 
 Let's implement a refresh session mechanism integrated into an HTTP client with the following requirements:
 
@@ -26,17 +26,17 @@ Let's implement a refresh session mechanism integrated into an HTTP client with 
    - Uses exponential backoff starting at 1.5 seconds with a 1.5x multiplier
    - Limits retries to 3 attempts
 5. Enable consumers to determine if their original operation should be retried after a refresh. Upon successful refresh, both the initiating request and any queued requests should retry their original operations.
-6. Queue all concurrent requests while a session refresh is in progress (since we know they'll fail with 401, let's avoid making them altogether).
+6. Queue all concurrent requests while a session refresh is in progress.
 
-Bonus challenges: 7. Design the solution to be composable with support for dependency injection. 8. Implement telemetry by:
+## Bonus Challenges
 
-- Adding spans for all key operations
-- Creating a trace for the entire request lifecycle
-- Including relevant attributes in spans (request URL, response status, etc.)
+7. Design the solution to be composable with support for dependency injection.
+8. Implement telemetry by:
+   - Adding spans for all key operations
+   - Creating a trace for the entire request lifecycle
+   - Including relevant attributes in spans
 
-### Implementation Walkthrough
-
-#### Scaffolding Our Program
+## Implementation Walkthrough
 
 We'll start off by declaring our access layer for our tokens. For this example, we'll store them in a reference, though in a real application, you'd most likely retrieve them from:
 
@@ -71,7 +71,7 @@ A quick note about `Schema`: By using `Schema.Class`, we get several powerful fe
 - A validator through `Schema.decodeUnknown(AuthTokens)` for handling unknown data
 - An encoder via `Schema.encode` for transformations like encryption
 
-#### Refresh Method
+## Refresh Method
 
 Now, let's use `HttpClient` from `@effect/platform` to make our request to refresh the session:
 
@@ -123,7 +123,7 @@ const program = Effect.gen(function* () {
 
 As you can see, this isn't too different from traditional async/await code. The magic happens when we use `@effect/platform`: it automatically exposes all possible errors (`ResponseError` and `RequestError`) and sets up spans for you. This means when you connect it to telemetry, all these operations are automatically tracked and registered.
 
-#### Implementing Concurrent Access Control
+## Implementing Concurrent Access Control
 
 Now let's tackle our first major challenge: ensuring that only one refresh operation can happen at a time.
 
@@ -158,7 +158,7 @@ const program = Effect.gen(function* () {
 
 All it takes is two lines of code, and just like that, we've guaranteed that our refresh operation runs exclusively - only one refresh can happen at a time, no matter how many concurrent requests we receive.
 
-#### Implementing a Notification Mechanism
+## Implementing a Notification Mechanism
 
 However, there's a major issue in our current implementation. While requests are being queued up during a session refresh, nothing prevents each of them from triggering their own refresh once they reach the front of the queue. So, after the first refresh completes, the next request would trigger another refresh, and so on. We also lack a mechanism to tell the initiators to retry their original operation after a successful refresh.
 
@@ -226,7 +226,7 @@ This tells us our computation can fail with three types of errors:
 
 You'll also notice our use of `Option` here - it helps us write more declarative code through its `Option.match` method, making our intentions a little clearer.
 
-#### Implementing Timeout & Retry Policies
+## Implementing Timeout & Retry Policies
 
 Now, let's tackle the next requirements from our exercise: adding a 5-second timeout for session refreshes and implementing retries with exponential backoff (except for 401s and parse errors).
 
@@ -295,7 +295,7 @@ Since we know defects are inherently non-actionable, we often need to transform 
 
 My advice is to be selective about exposing errors. Only expose truly actionable errors, and don't hesitate to use `die`. As long as you have proper telemetry set up (which Effect makes remarkably easy), this approach is very maintainable.
 
-#### Implementing the Latch
+## Implementing the Latch
 
 All that's left (outside of the bonus requirements) is to queue all concurrent requests if a session refresh is in progress, to prevent making unnecessary requests that we know will fail with a 401. Now, I'm not talking about the semaphore we just implemented - that one works perfectly for when concurrent operations get a 401 and need to refresh the session.
 
@@ -343,7 +343,7 @@ const makeRequest = Effect.gen(function* () {
 
 Notice how we create a new latch with `Effect.makeLatch(true)` - the `true` indicates it starts in an open state. Then, we protect our `Ref.get(accessTokensRef)` operation with `whenOpen`, which means any time we try to read tokens, this operation will be queued if the latch is closed. In the refresh operation, we immediately close the latch with `tokensLatch.close`, and we use `Effect.ensuring` to guarantee that `tokensLatch.open` is executed even if the parent computation fails with a defect or error.
 
-#### Bonus Implementation
+## Bonus Implementation
 
 Now, we're pretty much done! We have two final tasks:
 
@@ -442,7 +442,7 @@ const program = Effect.gen(function* () {
 program.pipe(Effect.provide(CustomHttpClient.Default), Effect.scoped, Effect.runPromise);
 ```
 
-### Conclusion
+## Conclusion
 
 What I love about Effect is how it lets me focus on business logic instead of getting lost in implementation details. Without Effect, this same solution would easily span 400+ lines of code, and its intent wouldn't be nearly as clear at first glance.
 

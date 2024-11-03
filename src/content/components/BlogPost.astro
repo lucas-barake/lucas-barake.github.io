@@ -10,9 +10,11 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
 ---
 
 <BaseLayout title={title}>
-  <article class="prose prose-invert mx-auto max-w-3xl prose-pre:p-0 prose-h1:text-4xl prose-h2:text-3xl prose-h3:text-2xl prose-h4:text-xl prose-strong:text-white/90 prose-a:text-blue-400 hover:prose-a:text-blue-300 prose-code:text-blue-300 prose-blockquote:border-blue-500">
-    <header class="not-prose mb-16">
-      <time class="text-sm text-gray-400">
+  <article
+    class="prose prose-invert mx-auto max-w-3xl prose-pre:p-0 prose-h1:text-4xl prose-h2:text-3xl prose-h3:text-2xl prose-h4:text-xl prose-strong:text-white/90 prose-a:text-blue-400 hover:prose-a:text-blue-300 prose-code:text-blue-300 prose-blockquote:border-blue-500 pb-20"
+  >
+    <header class="not-prose">
+      <time class="text-sm text-neutral-300">
         {
           new Date(date).toLocaleDateString("en-US", {
             year: "numeric",
@@ -22,11 +24,70 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
         }
       </time>
       <h1 class="text-4xl font-bold mt-2 mb-4">{title}</h1>
-      <p class="text-gray-400 text-lg">{description}</p>
     </header>
+
     <slot />
   </article>
 </BaseLayout>
+
+<script>
+  function handleStickyHeaders() {
+    const headings = document.querySelectorAll(".prose h2, .prose h3, .prose h4");
+    let currentStickyHeading: Element | null = null;
+    let lastScrollY = window.scrollY;
+
+    function updateStickyHeading() {
+      const scrollY = window.scrollY;
+      const scrollingDown = scrollY > lastScrollY;
+      lastScrollY = scrollY;
+
+      // Find the appropriate heading based on scroll position
+      let newStickyHeading: Element | null = null;
+
+      headings.forEach((heading) => {
+        const rect = heading.getBoundingClientRect();
+
+        if (scrollingDown) {
+          // When scrolling down, make heading sticky when it reaches the top
+          if (rect.top <= 10 && rect.bottom > 10) {
+            newStickyHeading = heading;
+          }
+        } else {
+          // When scrolling up, make heading sticky when it's near the top
+          if (rect.top <= 10) {
+            newStickyHeading = heading;
+          }
+        }
+      });
+
+      // If we found a heading that should be sticky
+      if (newStickyHeading && newStickyHeading !== currentStickyHeading) {
+        // Make all headings non-sticky
+        headings.forEach((h) => {
+          (h as HTMLElement).style.position = "static";
+        });
+
+        // Make the new heading sticky
+        (newStickyHeading as HTMLElement).style.position = "sticky";
+        currentStickyHeading = newStickyHeading;
+      }
+    }
+
+    // Listen to scroll events
+    window.addEventListener("scroll", updateStickyHeading, { passive: true });
+
+    // Initial setup
+    headings.forEach((heading) => {
+      (heading as HTMLElement).style.position = "static";
+    });
+
+    // Make the first heading sticky initially if it's at the top
+    updateStickyHeading();
+  }
+
+  // Run on page load
+  handleStickyHeaders();
+</script>
 
 <style is:global>
   /* Modern scrollbar for the entire site */
@@ -148,15 +209,34 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
   .prose h3,
   .prose h4 {
     scroll-margin-top: 0;
-    position: sticky;
-    background-color: rgba(23, 23, 23, 0.8); /* bg-neutral-900 with opacity */
+    background-color: rgba(23, 23, 23, 0.8);
     backdrop-filter: blur(8px);
     margin: 0 !important;
     padding: 1rem 0;
     z-index: 10;
     border-bottom: 1px solid rgba(75, 85, 99, 0.2);
     width: 100%;
+    top: 0;
   }
+
+  .prose h2 {
+    z-index: 30;
+  }
+  .prose h3 {
+    z-index: 20;
+  }
+  .prose h4 {
+    z-index: 10;
+  }
+
+  /* Add padding to content after headings to prevent overlap */
+  .prose h2 + *,
+  .prose h3 + *,
+  .prose h4 + * {
+    margin-top: 2rem !important;
+  }
+
+  /* Remove the hierarchy adjustments section entirely as we're using a different approach */
 
   /* Content spacing */
   .prose > div > *:not(h2):not(h3):not(h4) {
@@ -170,22 +250,5 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
   .prose > div > h4:first-child {
     margin-top: 0;
     padding-top: 0;
-  }
-
-  /* Hierarchy adjustments */
-  .prose h2 { 
-    top: 0;
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
-  }
-  .prose h3 { 
-    top: 3.5rem;
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
-  }
-  .prose h4 { 
-    top: 6.5rem;
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
   }
 </style>
