@@ -133,7 +133,9 @@ For this, we'll use `withSemaphore(1)`. If you're new to semaphores, think of th
 const program = Effect.gen(function* () {
   // ...
 
+  // spotlight-start
   const semaphore = yield* Effect.makeSemaphore(1);
+  // spotlight-end
 
   const refresh = Effect.gen(function* () {
     const tokens = yield* Ref.get(accessTokensRef);
@@ -152,7 +154,9 @@ const program = Effect.gen(function* () {
       accessToken: result.newAccessToken,
       refreshToken: result.newRefreshToken
     }));
+    // spotlight-start
   }).pipe(semaphore.withPermits(1));
+  // spotlight-end
 });
 ```
 
@@ -180,15 +184,19 @@ class ForceRetryError extends Data.TaggedError("ForceRetryError") {}
 const program = Effect.gen(function* () {
   // ...
 
+  // spotlight-start
   const timeSinceLastRefresh = yield* Ref.make<Option.Option<DateTime.DateTime>>(Option.none());
+  // spotlight-end
 
   const refresh = Effect.gen(function* () {
+    // spotlight-start
     const now = yield* DateTime.now;
     const hasRecentlyRefreshed = Option.match(yield* timeSinceLastRefresh, {
       onSome: DateTime.greaterThan(DateTime.subtract(now, { minutes: 5 })),
       onNone: () => false
     });
     if (hasRecentlyRefreshed) return yield* new ForceRetryError();
+    // spotlight-end
 
     const tokens = yield* Ref.get(accessTokensRef);
 
@@ -206,8 +214,9 @@ const program = Effect.gen(function* () {
       accessToken: result.newAccessToken,
       refreshToken: result.newRefreshToken
     }));
-
+    // spotlight-start
     return yield* new ForceRetryError();
+    // spotlight-end
   }).pipe(semaphore.withPermits(1));
 });
 ```
@@ -256,6 +265,7 @@ const program = Effect.gen(function* () {
 
     return yield* new ForceRetryError();
   }).pipe(
+    // spotlight-start
     Effect.catchIf(
       (error) => error._tag === "ResponseError" && error.response.status === 401,
       () => Effect.dieMessage("Definitely not authenticated")
@@ -267,6 +277,7 @@ const program = Effect.gen(function* () {
       while: (error) => error._tag !== "ForceRetryError"
     }),
     Effect.catchAll((error) => (error._tag !== "ForceRetryError" ? Effect.die(error) : error)),
+    // spotlight-end
     semaphore.withPermits(1)
   );
 });
@@ -420,7 +431,8 @@ class CustomHttpClient extends Effect.Service<CustomHttpClient>()("CustomHttpCli
         })
       ),
       HttpClient.catchTags({
-        ResponseError: (error) => (error.response.status === 401 ? session.refreshSession : Effect.fail(error))
+        ResponseError: (error) =>
+          error.response.status === 401 ? session.refreshSession : Effect.fail(error)
       }),
       HttpClient.retry({
         times: 1,
