@@ -105,16 +105,17 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
     background: rgb(96, 96, 96);
   }
 
-  /* Modern code block styling */
+  /* Base pre styling */
   .prose pre {
     background-color: #1a1b26 !important;
     border-radius: 0.5rem;
     margin: 2rem 0;
     overflow-x: auto;
+    position: relative;
   }
 
   .prose pre code {
-    display: block;
+    display: inline-block;
     padding: 1.5rem;
     font-size: 0.875rem;
     line-height: 1.6;
@@ -122,11 +123,16 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
     border-radius: 0;
     white-space: pre;
     counter-reset: line;
+    position: relative;
+    min-width: fit-content;
+    width: 100%;
+    min-width: max(100%, fit-content);
   }
 
   /* Base line styling - always visible */
   .prose pre code .line {
     display: inline-block;
+    position: relative;
     width: 100%;
   }
 
@@ -135,14 +141,24 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
     opacity: 0.6;
   }
 
-  /* Spotlight styling */
+  /* Fixed spotlight styling */
   .prose pre code .line.spotlight {
     opacity: 1;
+    position: relative;
+    isolation: isolate;
+  }
+
+  /* Create the spotlight effect using a pseudo-element */
+  .prose pre code .line.spotlight::before {
+    content: "";
+    position: absolute;
+    left: -1.5rem;
+    right: -1.5rem;
+    top: 0;
+    bottom: 0;
     background: hsla(239, 84%, 65%, 0.075);
+    z-index: -1;
     width: calc(100% + 3rem);
-    margin-left: -1.5rem;
-    padding: 0 1.5rem;
-    display: inline-block;
   }
 
   /* Hide backticks in inline code */
@@ -177,10 +193,17 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
   /* Better blockquotes */
   .prose blockquote {
     border-left-width: 3px;
-    margin: 2rem 0;
-    padding: 1rem 1.5rem;
+    margin: 1rem 0;
+    padding: 0.125rem 1rem;
     background-color: rgb(29, 31, 39);
     border-radius: 0.5rem;
+    font-style: italic;
+  }
+
+  /* Remove default quotation marks */
+  .prose blockquote p::before,
+  .prose blockquote p::after {
+    content: none;
   }
 
   /* List styling */

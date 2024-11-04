@@ -1,0 +1,514 @@
+---
+title: Supporting Offline Mode in TanStack Query
+date: 2024-11-04
+description: "One of the main challenges I've faced when using TanStack is achieving offline usage while having full control over the data layer. In this blog post, we'll explore how to use Effect and Effect Schema, along with the browser's IndexedDB, to persist TanStack Query data locally."
+---
+
+One of the main challenges I've faced when using TanStack Query is achieving offline support while maintaining full control over the data layer. What starts as a simple requirement to cache data locally often evolves into managing complex cache invalidation logic, version migrations, and essentially implementing a mini-backend in your frontend.
+
+I've looked at various solutions online, but they either don't play nice with TanStack Query's data layer or are so limited that you might as well build your own solution. So, I thought, "there has to be a better way," and that's when I remembered Effect Schema.
+
+## Enter Effect Schema
+
+If you're not familiar with [Effect Schema](https://effect.website/docs/schema/introduction/), think of it as an evolution of validators like Zod or Yup. While most validators only transform `unknown` into your type `T`, Effect Schema provides bi-directional transformation - allowing you to go from `From` to `To` and back again. This capability enables us to:
+
+- Eliminate version management and migrations
+- Let schema changes automatically invalidate cache entries
+- Have invalid/stale data trigger new queries automatically
+
+So, to give you an example, let's say we have the following response from our API:
+
+```ts
+enum TodoStatus {
+  Pending = "pending",
+  Completed = "completed",
+  Cancelled = "cancelled"
+}
+
+type Todo = {
+  id: string;
+  title: string;
+  status: TodoStatus;
+  created_at: string;
+};
+```
+
+Now, suppose you need to rename `created_at` to `createdAt` and transform that `string` timestamp into a proper `Date` object. With Zod, you might write something like this:
+
+```ts
+const todoSchema = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    status: z.nativeEnum(TodoStatus),
+    created_at: z.string().datetime()
+  })
+  .transform((data) => ({
+    ...data,
+    createdAt: new Date(data.created_at)
+  }));
+
+type TransformedTodo = z.infer<typeof todoSchema>;
+```
+
+Where we take `unknown` and validate and transform it into `TransformedTodo`.
+
+This works for validation, but persisting to localStorage is more nuanced, as you'd need another schema for the transformed data:
+
+```ts
+const transformedTodoSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.nativeEnum(TodoStatus),
+  createdAt: z.date()
+});
+```
+
+But you're not accounting for the fact that you'd have to serialize and deserialize the JSON data. So, for instance, instead of `createdAt: Date`, you'd have to do `createdAt: string` and apply the transformation from `string` to `Date`:
+
+```ts
+const transformedTodoSchema = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    status: z.nativeEnum(TodoStatus),
+    // spotlight-start
+    createdAt: z.string().datetime()
+    // spotlight-end
+  })
+  // spotlight-start
+  .transform((data) => ({
+    ...data,
+    createdAt: new Date(data.createdAt)
+  }));
+// spotlight-end
+```
+
+This becomes cumbersome very quickly, and you can imagine how this would scale.
+
+## Effect Schema to the Rescue
+
+This is where Effect Schema really shines. Instead of having to maintain two separate schemas and manually handle serialization/deserialization, we can define a single schema that handles both the validation and transformation in both directions:
+
+```ts
+import { Schema } from "@effect/schema";
+
+const Todo = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  status: Schema.Enums(TodoStatus),
+  // Transform from string to Date and back
+  created_at: Schema.DateFromString
+}).pipe(
+  Schema.rename({
+    created_at: "createdAt"
+  })
+);
+
+type SerializedTodo = Schema.Schema.Encoded<typeof Todo>;
+// { id: string; title: string; status: TodoStatus; created_at: string; }
+
+type ParsedTodo = typeof Todo.Type;
+// { id: string; title: string; status: TodoStatus; createdAt: Date; }
+```
+
+The strength of this approach is that it:
+
+- Unifies validation and serialization in a single schema definition
+- Automatically invalidates cached data when schemas change
+- Provides complete type safety throughout the application
+- Eliminates migration complexity
+
+> If you're interested in diving deeper into Effect Schema, I recommend checking out my [crash course](https://youtu.be/nQA_JsCozU4).
+
+When working with your API, the process is simple: use `decode` when receiving data and `encode` when persisting it.
+
+```ts
+const getTodos = async () => {
+  const todos = await fetch("/todos");
+  const json = await todos.json();
+  const decoded = Schema.decodeUnknown(Todo)(json);
+  return decoded;
+};
+
+const saveTodos = (todos: ParsedTodo[]) => {
+  const encoded = Schema.encode(Schema.Array(Todo))(todos);
+  localStorage.setItem("todos", JSON.stringify(encoded));
+};
+```
+
+Which means that if we do this:
+
+```ts
+const decodedTodo = Schema.decodeSync(Todo)({
+  created_at: "2024-01-01",
+  id: "1",
+  status: TodoStatus.Pending,
+  title: "Hello"
+});
+
+console.log(Schema.encodeSync(Todo)(decodedTodo));
+```
+
+We get:
+
+```json
+{
+  "id": "1",
+  "title": "Hello",
+  "status": "pending",
+  "created_at": "2024-01-01T00:00:00.000Z"
+}
+```
+
+Now we're ready to store this in IndexedDB!
+
+### Custom Decode/Encode
+
+Side note: you could have your own custom `decode` and `encode` functions:
+
+```ts
+const IncomingTodo = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  status: Schema.Enums(TodoStatus),
+  created_at: Schema.DateFromString
+});
+
+const Todo = Schema.transform(
+  IncomingTodo,
+  Schema.Struct({
+    ...IncomingTodo.omit("created_at").fields,
+    createdAt: Schema.DateFromSelf
+  }),
+  {
+    decode: (from) => ({
+      ...from,
+      createdAt: from.created_at
+    }),
+    encode: (to) => ({
+      ...to,
+      created_at: to.createdAt
+    }),
+    strict: true
+  }
+);
+```
+
+However, since Effect Schema comes with a lot of built-in transformations, such as `pluck`, `rename`, etc, there's no need to manually define these transformations (at least for this example, though your requirements may be different).
+
+### IndexedDB Abstraction
+
+Now that we understand Effect Schema's core concepts, let's create our IndexedDB abstraction. For this implementation, I'll create an Effect wrapper around [localforage](https://github.com/localForage/localForage):
+
+```ts
+import localforage from "localforage";
+import { Effect, Schema, Option } from "effect";
+
+export class IndexedDB extends Effect.Service<IndexedDB>()("IndexedDB", {
+  sync: () =>
+    ({
+      get: (key: string) =>
+        Effect.tryPromise(() => localforage.getItem(key)).pipe(
+          Effect.map(Option.some),
+          Effect.orElseSucceed(() => Option.none<unknown>()),
+          Effect.withSpan("IndexedDB.get")
+        ),
+      set: (key: string, value: unknown) =>
+        Effect.tryPromise(() => localforage.setItem(key, value)).pipe(
+          Effect.ignore,
+          Effect.withSpan("IndexedDB.set")
+        ),
+      remove: (key: string) =>
+        Effect.tryPromise(() => localforage.removeItem(key)).pipe(
+          Effect.ignore,
+          Effect.withSpan("IndexedDB.remove")
+        ),
+      clear: () =>
+        Effect.tryPromise(() => localforage.clear()).pipe(
+          Effect.ignore,
+          Effect.withSpan("IndexedDB.clear")
+        )
+    }) as const,
+  accessors: true
+}) {}
+```
+
+Next, I'll create a `QueryPersister` to manage the invalidation logic:
+
+```ts
+export class QueryPersister extends Effect.Service<QueryPersister>()("QueryPersister", {
+  effect: Effect.gen(function* () {
+    const indexedDB = yield* IndexedDB;
+
+    class StoredData extends Schema.Class<StoredData>("StoredData")({
+      modifiedAt: Schema.DateTimeUtc.pipe(
+        Schema.filter(
+          DateTime.greaterThanOrEqualTo(DateTime.subtract(DateTime.unsafeNow(), { days: 7 }))
+        )
+      ),
+      data: Schema.Unknown
+    }) {
+      static decodeUnknownOptionFromSelf = Schema.decodeUnknown(
+        Schema.OptionFromSelf(this.pipe(Schema.pluck("data")))
+      );
+      static encode = Schema.encode(this);
+    }
+
+    const remove = (key: string) =>
+      indexedDB.remove(key).pipe(Effect.ignore, Effect.withSpan("QueryPersister.remove"));
+
+    return {
+      get: <Result, Input>(key: string, schema: Schema.Schema<Result, Input>) =>
+        indexedDB.get(key).pipe(
+          Effect.flatMap(StoredData.decodeUnknownOptionFromSelf),
+          Effect.flatMap(Schema.decodeUnknown(Schema.OptionFromSelf(schema))),
+          Effect.orElse(() => Effect.zipRight(remove(key), Effect.succeed(Option.none<Result>()))),
+          Effect.withSpan("QueryPersister.get")
+        ),
+      store: (key: string, value: unknown) =>
+        Effect.gen(function* () {
+          const encoded = yield* StoredData.encode({
+            data: value,
+            modifiedAt: DateTime.unsafeNow()
+          });
+          yield* indexedDB.set(key, encoded);
+        }).pipe(Effect.ignore, Effect.withSpan("QueryPersister.store")),
+      remove: (key: string) =>
+        indexedDB.remove(key).pipe(Effect.ignore, Effect.withSpan("QueryPersister.remove"))
+    } as const;
+  }),
+  dependencies: [IndexedDB.Default]
+}) {}
+```
+
+Notice how we declare a `modifiedAt` property with a `Schema.filter`. This enables automatic invalidation of stale data that exceeds a specified age threshold - whether that's days, weeks, or months. In this case, we're invalidating any data older than 7 days.
+
+### Query Persister
+
+The final piece is an HTTP client that uses the query's `queryKey` as the storage key and the encoded data as the value within our `IndexedDB` service. Here's the core functionality:
+
+- For existing stored data: we decode and return cached data optimistically to the `queryFn`, initiate a background request, and upon success, encode and update the in-memory data.
+- For missing data: we execute a blocking request (awaited) and, upon success, encode and store the result.
+
+```ts
+class MyHttpClient extends Effect.Service<MyHttpClient>()("MyHttpClient", {
+  effect: Effect.gen(function* () {
+    const queryPersister = yield* QueryPersister;
+
+    const client = (yield* HttpClient.HttpClient).pipe(
+      HttpClient.filterStatusOk,
+      HttpClient.mapRequest((request) =>
+        request.pipe(
+          HttpClientRequest.prependUrl("https://...")
+          // ...
+        )
+      )
+    );
+
+    // spotlight-start
+    const makeCachedRequest = <QK extends QueryKey, Result, Input>({
+      queryKey,
+      schema,
+      request
+    }: {
+      queryKey: QK;
+      schema: Schema.Schema<Result, Input>;
+      request: HttpClientRequest.HttpClientRequest;
+    }) =>
+      Effect.gen(function* () {
+        const stringifiedQueryKey = yield* Effect.try(() => JSON.stringify(queryKey)).pipe(
+          Effect.withSpan("JSON.stringify")
+        );
+
+        const cachedData = yield* queryPersister.get(stringifiedQueryKey, schema);
+
+        const persistedRequest = client.execute(request).pipe(
+          Effect.flatMap(HttpClientResponse.schemaBodyJson(schema)),
+          Effect.tap((data) =>
+            Effect.zipRight(
+              pipe(
+                data,
+                Schema.encode(schema),
+                Effect.flatMap((encoded) => queryPersister.store(stringifiedQueryKey, encoded))
+              ),
+              Effect.sync(() => queryClient.setQueryData(queryKey, data))
+            )
+          )
+        );
+
+        return yield* Option.match(cachedData, {
+          onSome: (data) =>
+            Effect.zipRight(Effect.forkDaemon(persistedRequest), Effect.succeed(data)),
+          onNone: () => persistedRequest
+        });
+      }).pipe(Effect.withSpan("MyHttpClient.makeCachedRequest"));
+    // spotlight-end
+
+    return { client, makeCachedRequest } as const;
+  }),
+  dependencies: [QueryPersister.Default]
+}) {}
+```
+
+With this approach, we can decide which queries to persist. All the consumer needs to do is call `makeCachedRequest`:
+
+```ts
+export namespace TodosQuery {
+  export const Result = Schema.Struct({
+    id: Schema.String,
+    title: Schema.String,
+    status: Schema.Enums(TodoStatus),
+    created_at: Schema.DateFromString
+  }).pipe(
+    Schema.rename({
+      created_at: "createdAt"
+    })
+  );
+  export type Result = typeof Result.Type;
+
+  export const makeQueryKey = () => ["todos"] as const;
+
+  export const useQuery = () => {
+    return useTanStackQuery({
+      queryKey: makeQueryKey(),
+      queryFn: () =>
+        Effect.gen(function* () {
+          const { makeCachedRequest } = yield* MyHttpClient;
+
+          return yield* makeCachedRequest({
+            queryKey: makeQueryKey(),
+            schema: Result,
+            request: HttpClientRequest.get("...")
+          });
+        })
+    });
+  };
+}
+```
+
+### Removing Cached Data
+
+When implementing cached data removal, I recommend organizing all queries and mutations within namespaces. This structure enables exporting types and runtime values within the same entity, while providing clean encapsulation of query-specific logic.
+
+For instance, if you want to remove all cached data for the `TodosQuery`, you can do something like this:
+
+```ts
+export namespace TodosQuery {
+  export const Result = Schema.Struct({
+    id: Schema.String,
+    title: Schema.String,
+    status: Schema.Enums(TodoStatus),
+    created_at: Schema.DateFromString
+  }).pipe(
+    Schema.rename({
+      created_at: "createdAt"
+    })
+  );
+  export type Result = typeof Result.Type;
+
+  export const makeQueryKey = () => ["todos"] as const;
+
+  export const useQuery = () => {
+    return useTanStackQuery({
+      queryKey: makeQueryKey(),
+      queryFn: () =>
+        Effect.gen(function* () {
+          const { makeCachedRequest } = yield* MyHttpClient;
+
+          return yield* makeCachedRequest({
+            queryKey: makeQueryKey(),
+            schema: Result,
+            request: HttpClientRequest.get("...")
+          });
+        })
+    });
+  };
+
+  // spotlight-start
+  export const remove = () =>
+    QueryPersister.remove(JSON.stringify(makeQueryKey())).pipe(
+      Effect.andThen(() => queryClient.removeQueries({ queryKey: makeQueryKey() }))
+    );
+  // spotlight-end
+}
+```
+
+### Setting Cached Data
+
+There are two approaches you can take when it comes to setting cached data:
+
+- Implementing `QueryPersister.set` within the namespace's exported `set` function.
+- Creating a `useSyncLocal` hook for each query to periodically synchronize local data with in-memory data, treating the latter as the source of truth.
+
+For simplicity, let's go with the first approach:
+
+```ts
+export namespace TodosQuery {
+  export const Result = Schema.Struct({
+    id: Schema.String,
+    title: Schema.String,
+    status: Schema.Enums(TodoStatus),
+    created_at: Schema.DateFromString
+  }).pipe(
+    Schema.rename({
+      created_at: "createdAt"
+    })
+  );
+  export type Result = typeof Result.Type;
+
+  export const makeQueryKey = () => ["todos"] as const;
+
+  export const useQuery = () => {
+    return useTanStackQuery({
+      queryKey: makeQueryKey(),
+      queryFn: () =>
+        Effect.gen(function* () {
+          const { makeCachedRequest } = yield* MyHttpClient;
+
+          return yield* makeCachedRequest({
+            queryKey: makeQueryKey(),
+            schema: Result,
+            request: HttpClientRequest.get("...")
+          });
+        })
+    });
+  };
+
+  export const remove = () =>
+    QueryPersister.remove(JSON.stringify(makeQueryKey())).pipe(
+      Effect.andThen(() => queryClient.removeQueries({ queryKey: makeQueryKey() }))
+    );
+  // spotlight-start
+  export const set = (updater: (updater: Result | undefined) => Result | undefined) =>
+    Effect.gen(function* () {
+      const data = yield* Effect.sync(() =>
+        Option.fromNullable(queryClient.setQueryData<Result>(makeQueryKey(), updater))
+      );
+
+      const stringifiedQueryKey = JSON.stringify(makeQueryKey());
+
+      if (Option.isSome(data)) {
+        yield* QueryPersister.store(stringifiedQueryKey, yield* Schema.encode(Result)(data.value));
+      } else {
+        yield* QueryPersister.remove(stringifiedQueryKey);
+      }
+    });
+  // ...
+  // spotlight-end
+}
+```
+
+> If your queries have a high frequency of updates, you might want to consider either debouncing the `set` function or exploring the second approach mentioned above.
+
+### Conclusion
+
+Great! With this approach, your users can still interact with your application even when offline (as long as they have cached data).
+
+Here's what I recommend doing next:
+
+- Implement a `Connection` service to manage `persistedRequest` based on connection status changes.
+- Extend the caching strategy to mutations by encoding inputs and implementing a system to decode and execute stored mutations when the application starts or regains connectivity. This will also let you automatically invalidate stale mutations.
+- Create helper functions to abstract the logic for persisting and invalidating data for each query/mutation.
+
+While this might feel somewhat manual (and potentially overwhelming), the benefit is complete control over your data layer. You can apply this same strategy to React Native as well. All you need is a different `IndexedDB` implementation (or better yet, rename this to a more generic `Cache` service), and you're set!
