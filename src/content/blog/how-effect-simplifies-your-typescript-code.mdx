@@ -311,9 +311,10 @@ const program = Effect.gen(function* () {
       refreshToken: "refresh-token"
     })
   );
+  // spotlight-start
   const tokensLatch = yield* Effect.makeLatch(true);
   const getTokens = tokensLatch.whenOpen(Ref.get(accessTokensRef));
-
+  // spotlight-end
   const refresh = Effect.gen(function* () {
     // ...
     if (hasRecentlyRefreshed) return yield* new ForceRetryError();
@@ -325,12 +326,16 @@ const program = Effect.gen(function* () {
     // ...
   }).pipe(
     // ...
+    // spotlight-start
     Effect.ensuring(tokensLatch.open),
+    // spotlight-end
     semaphore.withPermits(1)
   );
 
   const makeRequest = Effect.gen(function* () {
+    // spotlight-start
     const tokens = yield* getTokens;
+    // spotlight-end
 
     const response = yield* httpClient.get("...", {
       headers: { Authorization: `Bearer: ${tokens.accessToken}` }

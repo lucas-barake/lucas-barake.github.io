@@ -121,6 +121,28 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
     background-color: transparent;
     border-radius: 0;
     white-space: pre;
+    counter-reset: line;
+  }
+
+  /* Base line styling - always visible */
+  .prose pre code .line {
+    display: inline-block;
+    width: 100%;
+  }
+
+  /* Only apply dimming when code block has spotlights */
+  .prose pre code.has-spotlights .line.dim {
+    opacity: 0.6;
+  }
+
+  /* Spotlight styling */
+  .prose pre code .line.spotlight {
+    opacity: 1;
+    background: rgba(99, 102, 241, 0.1);
+    width: calc(100% + 3rem);
+    margin-left: -1.5rem;
+    padding: 0 1.5rem;
+    display: inline-block;
   }
 
   /* Hide backticks in inline code */
