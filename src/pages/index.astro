@@ -4,9 +4,16 @@ import { getCollection } from "astro:content";
 
 const posts = await getCollection("blog");
 const sortedPosts = posts.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+const description = "I write about software development, TypeScript, and web technologies.";
 ---
 
-<BaseLayout title="Lucas Barake">
+<BaseLayout 
+  title="Lucas Barake"
+  description={description}
+  image={undefined}
+  article={false}
+>
   <section>
     <h1 class="text-3xl sm:text-4xl font-bold px-4">
       Hello there! <span class="wave">👋</span>

@@ -3,13 +3,34 @@ interface Props {
   title: string;
   description: string;
   date: Date;
+  image: string | undefined;
 }
 
-const { title, date } = Astro.props;
+const { title, description, date, image } = Astro.props;
 import BaseLayout from "../../layouts/BaseLayout.astro";
 ---
 
-<BaseLayout title={title}>
+<BaseLayout 
+  title={title}
+  description={description}
+  image={image}
+  article={true}
+>
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": title,
+    "description": description,
+    "image": image ? new URL(image, Astro.site) : undefined,
+    "datePublished": new Date(date).toISOString(),
+    "dateModified": new Date(date).toISOString(),
+    "author": {
+      "@type": "Person",
+      "name": "Lucas Barake",
+      "url": "https://github.com/lucas-barake"
+    }
+  })} />
+
   <article
     class="prose prose-invert mx-auto max-w-3xl prose-pre:p-0 prose-h1:text-4xl prose-h2:text-3xl prose-h3:text-2xl prose-h4:text-xl prose-strong:text-white/90 prose-a:text-blue-400 hover:prose-a:text-blue-300 prose-code:text-blue-300 prose-blockquote:border-blue-500 pb-20"
   >
