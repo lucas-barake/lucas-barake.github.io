@@ -12,6 +12,25 @@ export function rehypeSpotlight() {
             (n) => n.type === "element" && n.tagName === "span" && n.properties.className?.includes("line")
           );
 
+          const lastSpan = lineSpans[lineSpans.length - 1];
+          if (lastSpan) {
+            const getText = (node) => {
+              if (node.value) return node.value;
+              return node.children?.map(getText).join("") || "";
+            };
+            const lastText = getText(lastSpan);
+            if (lastText.trim() === "") {
+              lastSpan.shouldRemove = true;
+              const lastSpanIndex = codeEl.children.indexOf(lastSpan);
+              const prevNode = codeEl.children[lastSpanIndex - 1];
+              if (prevNode && prevNode.type === "text" && prevNode.value === "\n") {
+                prevNode.shouldRemove = true;
+              }
+            }
+          }
+
+          codeEl.children = codeEl.children.filter((child) => !child.shouldRemove);
+
           const hasSpotlights = lineSpans.some((span) => {
             const hasMarker = (node) => {
               if (node.value) {
