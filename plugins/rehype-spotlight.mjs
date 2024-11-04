@@ -26,52 +26,56 @@ export function rehypeSpotlight() {
             codeEl.properties.className = [...(codeEl.properties.className || []), "has-spotlights"];
             let isSpotlighting = false;
 
-            lineSpans.forEach((span) => {
+            lineSpans.forEach((span, index) => {
               const getText = (node) => {
                 if (node.value) return node.value;
                 return node.children?.map(getText).join("") || "";
               };
               const text = getText(span);
 
-              // Classify the line FIRST
-              if (text.includes("// spotlight-start")) {
+              if (text.trim() === "// spotlight-start" || text.trim() === "// spotlight-end") {
+                span.shouldRemove = true;
+                const nextNode = codeEl.children[codeEl.children.indexOf(span) + 1];
+                if (nextNode && nextNode.type === "text" && nextNode.value === "\n") {
+                  nextNode.shouldRemove = true;
+                }
+
+                if (text.includes("spotlight-start")) {
+                  isSpotlighting = true;
+                } else {
+                  isSpotlighting = false;
+                }
+              } else if (text.includes("// spotlight-start")) {
                 isSpotlighting = true;
+                const transformNode = (node) => {
+                  if (node.value) {
+                    node.value = node.value.replace(/\/\/ spotlight-start\s*/, "");
+                  }
+                  if (node.children) {
+                    node.children.forEach(transformNode);
+                  }
+                };
+                transformNode(span);
               } else if (text.includes("// spotlight-end")) {
                 isSpotlighting = false;
+                const transformNode = (node) => {
+                  if (node.value) {
+                    node.value = node.value.replace(/\/\/ spotlight-end\s*/, "");
+                  }
+                  if (node.children) {
+                    node.children.forEach(transformNode);
+                  }
+                };
+                transformNode(span);
               } else if (isSpotlighting) {
                 span.properties.className = [...span.properties.className, "spotlight"];
               } else {
                 span.properties.className = [...span.properties.className, "dim"];
               }
-
-              // THEN transform the text nodes to remove spotlight markers
-              const transformNode = (node) => {
-                if (node.value) {
-                  node.value = node.value.replace(/\/\/ spotlight-start\s*/, "").replace(/\/\/ spotlight-end\s*/, "");
-                  return node.value.trim() === "";
-                }
-                if (node.children) {
-                  node.children = node.children.filter((child) => !transformNode(child));
-                  return node.children.length === 0;
-                }
-                return false;
-              };
-
-              const isEmpty = transformNode(span);
-              if (isEmpty) {
-                span.children = [];
-              }
             });
 
-            // Filter out empty spans at the end
-            codeEl.children = codeEl.children.filter(
-              (child) =>
-                !(
-                  child.type === "element" &&
-                  child.tagName === "span" &&
-                  (!child.children || child.children.length === 0)
-                )
-            );
+            // Remove the marked spans and their associated newlines
+            codeEl.children = codeEl.children.filter((child) => !child.shouldRemove);
           }
         }
       }
