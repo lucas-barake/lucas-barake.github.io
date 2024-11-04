@@ -53,7 +53,7 @@ type TransformedTodo = z.infer<typeof todoSchema>;
 
 Where we take `unknown` and validate and transform it into `TransformedTodo`.
 
-This works for validation, but persisting to localStorage is more nuanced, as you'd need another schema for the transformed data:
+This works for validation, but persisting to a storage is more nuanced, as you'd need another schema for the transformed data:
 
 ```ts
 const transformedTodoSchema = z.object({
