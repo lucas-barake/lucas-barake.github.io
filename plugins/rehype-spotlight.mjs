@@ -9,7 +9,10 @@ export function rehypeSpotlight() {
 
         if (codeEl) {
           const lineSpans = codeEl.children.filter(
-            (n) => n.type === "element" && n.tagName === "span" && n.properties.className?.includes("line")
+            (n) =>
+              n.type === "element" &&
+              n.tagName === "span" &&
+              n.properties.className?.includes("line")
           );
 
           const lastSpan = lineSpans[lineSpans.length - 1];
@@ -34,7 +37,10 @@ export function rehypeSpotlight() {
           const hasSpotlights = lineSpans.some((span) => {
             const hasMarker = (node) => {
               if (node.value) {
-                return node.value.includes("// spotlight-start") || node.value.includes("// spotlight-end");
+                return (
+                  node.value.includes("// spotlight-start") ||
+                  node.value.includes("// spotlight-end")
+                );
               }
               return node.children?.some(hasMarker) || false;
             };
@@ -42,7 +48,10 @@ export function rehypeSpotlight() {
           });
 
           if (hasSpotlights) {
-            codeEl.properties.className = [...(codeEl.properties.className || []), "has-spotlights"];
+            codeEl.properties.className = [
+              ...(codeEl.properties.className || []),
+              "has-spotlights"
+            ];
             let isSpotlighting = false;
 
             lineSpans.forEach((span, index) => {
@@ -88,12 +97,14 @@ export function rehypeSpotlight() {
                 transformNode(span);
               } else if (isSpotlighting) {
                 span.properties.className = [...span.properties.className, "spotlight"];
+                if (text.trim() === "") {
+                  span.children = [{ type: "text", value: "\u00A0" }];
+                }
               } else {
                 span.properties.className = [...span.properties.className, "dim"];
               }
             });
 
-            // Remove the marked spans and their associated newlines
             codeEl.children = codeEl.children.filter((child) => !child.shouldRemove);
           }
         }

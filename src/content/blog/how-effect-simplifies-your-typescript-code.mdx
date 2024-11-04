@@ -80,9 +80,11 @@ import { HttpBody, HttpClient } from "@effect/platform";
 import { Effect, Ref, Schema } from "effect";
 
 class AuthTokens extends Schema.Class<AuthTokens>("AuthTokens")({
-  // ...
+  accessToken: Schema.String,
+  refreshToken: Schema.String
 }) {}
 
+// spotlight-start
 class RefreshResult extends Schema.Class<RefreshResult>("RefreshResult")({
   newAccessToken: Schema.String,
   newRefreshToken: Schema.String
@@ -119,6 +121,7 @@ const program = Effect.gen(function* () {
     }));
   });
 });
+// spotlight-end
 ```
 
 As you can see, this isn't too different from traditional async/await code. The magic happens when we use `@effect/platform`: it automatically exposes all possible errors (`ResponseError` and `RequestError`) and sets up spans for you. This means when you connect it to telemetry, all these operations are automatically tracked and registered.
