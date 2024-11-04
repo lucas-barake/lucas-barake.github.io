@@ -10,11 +10,10 @@ interface Props {
 const { 
   title,
   description = "Lucas Barake's personal blog about software development and technology",
-  image = "/social-image.png", // Add a default social image
+  image = "/social-image.png",
   article = false
 } = Astro.props;
 
-// Get canonical URL
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 ---
 
