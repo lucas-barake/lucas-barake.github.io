@@ -482,9 +482,7 @@ export namespace TodosQuery {
   // spotlight-start
   export const set = (updater: (updater: Result | undefined) => Result | undefined) =>
     Effect.gen(function* () {
-      const data = yield* Effect.sync(() =>
-        Option.fromNullable(queryClient.setQueryData<Result>(makeQueryKey(), updater))
-      );
+      const data = Option.fromNullable(queryClient.setQueryData<Result>(makeQueryKey(), updater));
 
       const stringifiedQueryKey = JSON.stringify(makeQueryKey());
 
@@ -500,6 +498,18 @@ export namespace TodosQuery {
 ```
 
 > If your queries have a high frequency of updates, you might want to consider either debouncing the `set` function or exploring the second approach mentioned above.
+
+### Mutations
+
+For mutations, the idea is the same as with queries. You can create a schema for the mutation's input:
+
+```ts
+const CreateTask = Schema.Struct({
+  title: Schema.String,
+  description: Schema.String,
+  dueDate: Schema.DateFromSelf.pipe(Schema.filter(DateTime.isAfter(DateTime.unsafeNow())))
+});
+```
 
 ### Conclusion
 
