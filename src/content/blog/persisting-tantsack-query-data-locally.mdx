@@ -504,12 +504,66 @@ export namespace TodosQuery {
 For mutations, the idea is the same as with queries. You can create a schema for the mutation's input:
 
 ```ts
-const CreateTask = Schema.Struct({
+class Input extends Schema.Class<Input>("Input")({
   title: Schema.String,
   description: Schema.String,
-  dueDate: Schema.DateFromSelf.pipe(Schema.filter(DateTime.isAfter(DateTime.unsafeNow())))
-});
+  dueDate: Schema.DateTimeUtc.pipe(
+    Schema.filter(DateTime.greaterThanOrEqualTo(DateTime.add(DateTime.unsafeNow(), { days: 1 })))
+  )
+}) {}
 ```
+
+And then you can use `IndexedDB` with the mutation's key to `encode` and store the input data:
+
+```ts
+export namespace CreateTask {
+  export class Input extends Schema.Class<Input>("Input")({
+    title: Schema.String,
+    description: Schema.String,
+    dueDate: Schema.DateTimeUtc.pipe(
+      Schema.filter(DateTime.greaterThanOrEqualTo(DateTime.add(DateTime.unsafeNow(), { days: 1 })))
+    )
+  }) {}
+
+  export const makeMutationKey = () => ["createTask"] as const;
+
+  const persisterSemaphore = Effect.unsafeMakeSemaphore(1);
+  export const useMutation = () => {
+    return useTanStackMutation({
+      mutationKey: makeMutationKey(),
+      mutationFn: (input: Input) =>
+        Effect.gen(function* () {
+          const { client } = yield* MyHttpClient;
+
+          return yield* client.post("...", {
+            body: yield* HttpBody.json(input)
+          });
+        }).pipe(
+          Effect.catchIf(
+            (error) => error._tag === "RequestError" && error.reason === "Transport",
+            () =>
+              Effect.gen(function* () {
+                const storedInput = yield* IndexedDB.get(JSON.stringify(makeMutationKey())).pipe(
+                  Effect.flatMap(identity),
+                  Effect.flatMap(Schema.decodeUnknown(Schema.Array(Input))),
+                  Effect.map(Array.append(input)),
+                  Effect.orElseSucceed((): readonly Input[] => [input])
+                );
+
+                const decodedInput = yield* Schema.decodeUnknown(Schema.Array(Input))(storedInput);
+
+                yield* IndexedDB.set(JSON.stringify(makeMutationKey()), decodedInput);
+              }).pipe(persisterSemaphore.withPermits(1))
+          )
+        )
+    });
+  };
+}
+```
+
+Notice how we use a `withPermits(1)` to ensure that we prevent race conditions.
+
+With this, you can now export a `useSyncLocal` hook that will synchronize the stored input with the server, and a `useLocal` hook that will let you access the stored input (ideally, the hook would return the optimistic items so that you can render them in your UI alongside with the actual query - this could allow the user to see the changes even when offline, and also to possibly delete/edit them on command).
 
 ### Conclusion
 
