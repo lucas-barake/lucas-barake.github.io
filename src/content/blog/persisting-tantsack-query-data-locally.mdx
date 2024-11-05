@@ -303,12 +303,12 @@ class MyHttpClient extends Effect.Service<MyHttpClient>()("MyHttpClient", {
     );
 
     // spotlight-start
-    const makeCachedRequest = <QK extends QueryKey, Result, Input>({
+    const makeCachedRequest = <Result, Input>({
       queryKey,
       schema,
       request
     }: {
-      queryKey: QK;
+      queryKey: QueryKey;
       schema: Schema.Schema<Result, Input>;
       request: HttpClientRequest.HttpClientRequest;
     }) =>
