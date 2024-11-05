@@ -527,6 +527,7 @@ export namespace CreateTask {
 
   export const makeMutationKey = () => ["createTask"] as const;
 
+  // spotlight-start
   const persisterSemaphore = Effect.unsafeMakeSemaphore(1);
   export const useMutation = () => {
     return useTanStackMutation({
@@ -558,6 +559,7 @@ export namespace CreateTask {
         )
     });
   };
+  // spotlight-end
 }
 ```
 
