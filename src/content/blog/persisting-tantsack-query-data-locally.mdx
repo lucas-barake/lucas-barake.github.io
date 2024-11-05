@@ -501,9 +501,7 @@ For mutations, we follow a similar pattern to queries. You can create a schema f
 class Input extends Schema.Class<Input>("Input")({
   title: Schema.String,
   description: Schema.String,
-  dueDate: Schema.DateTimeUtc.pipe(
-    Schema.filter(DateTime.greaterThanOrEqualTo(DateTime.add(DateTime.unsafeNow(), { days: 1 })))
-  )
+  dueDate: Schema.DateTimeUtc
 }) {}
 ```
 
