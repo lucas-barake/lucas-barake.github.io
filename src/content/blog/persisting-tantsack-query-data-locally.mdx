@@ -36,51 +36,37 @@ type Todo = {
 Now, suppose you need to rename `created_at` to `createdAt` and transform that `string` timestamp into a proper `Date` object. With Zod, you might write something like this:
 
 ```ts
-const todoSchema = z
+// Decoding from API response
+const todoDecoder = z
   .object({
     id: z.string(),
     title: z.string(),
     status: z.nativeEnum(TodoStatus),
     created_at: z.string().datetime()
   })
-  .transform((data) => ({
-    ...data,
-    createdAt: new Date(data.created_at)
+  .transform(({ created_at, ...rest }) => ({
+    ...rest,
+    createdAt: new Date(created_at)
   }));
-
-type TransformedTodo = z.infer<typeof todoSchema>;
 ```
 
-Where we take `unknown` and validate and transform it into `TransformedTodo`.
-
-This works for validation, but persisting to a storage is more nuanced, as you'd need another schema for the transformed data:
+But now you need another schema for encoding back to API format:
 
 ```ts
-const transformedTodoSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  status: z.nativeEnum(TodoStatus),
-  createdAt: z.date()
-});
+const todoEncoder = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    status: z.nativeEnum(TodoStatus),
+    createdAt: z.date()
+  })
+  .transform(({ createdAt, ...rest }) => ({
+    ...rest,
+    created_at: createdAt.toISOString()
+  }));
 ```
 
-But you're not accounting for the fact that you'd have to serialize and deserialize the JSON data. So, for instance, instead of `createdAt: Date`, you'd have to do `createdAt: string` and apply the transformation from `string` to `Date`:
-
-```ts
-const transformedTodoSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  status: z.nativeEnum(TodoStatus),
-  // spotlight-start
-  createdAt: z
-    .string()
-    .datetime()
-    .transform((dateStr) => new Date(dateStr))
-  // spotlight-end
-});
-```
-
-This becomes cumbersome very quickly, and you can imagine how this would scale.
+The issue here is that Zod only handles one-way transformation. You need separate schemas for decoding and encoding, which you must maintain manually. This becomes cumbersome very quickly, and you can imagine how this would scale.
 
 ### Effect Schema to the Rescue
 
