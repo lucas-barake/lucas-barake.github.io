@@ -111,13 +111,13 @@ When working with your API, the process is simple: use `decode` when receiving d
 const getTodos = async () => {
   const todos = await fetch("/todos");
   const json = await todos.json();
-  const decoded = Schema.decodeUnknown(Todo)(json);
+  const decoded = Schema.decodeUnknownSync(Todo)(json);
   return decoded;
 };
 
 const saveTodos = (todos: ParsedTodo[]) => {
-  const encoded = Schema.encode(Schema.Array(Todo))(todos);
-  localStorage.setItem("todos", JSON.stringify(encoded));
+  const encoded = Schema.encodeSync(Schema.parseJson(Schema.Array(Todo)))(todos);
+  localStorage.setItem("todos", encoded);
 };
 ```
 
