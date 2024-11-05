@@ -172,11 +172,11 @@ const IncomingTodo = Schema.Struct({
 });
 
 const Todo = Schema.transform(
-  IncomingTodo,
+  IncomingTodo, // From
   Schema.Struct({
     ...IncomingTodo.omit("created_at").fields,
     createdAt: Schema.DateFromSelf
-  }),
+  }), // To
   {
     decode: (from) => ({
       ...from,
