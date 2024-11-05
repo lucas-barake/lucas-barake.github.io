@@ -371,7 +371,7 @@ export namespace TodosQuery {
 
 ### Removing Cached Data
 
-When implementing cached data removal, I recommend organizing all queries and mutations within namespaces. This structure enables exporting types and runtime values within the same entity, while providing clean encapsulation of query-specific logic.
+When it comes to cache removal, I recommend grouping your queries and mutations into namespaces. This lets you keep your types and runtime code within the same entity, while neatly organizing all your query-specific logic.
 
 For instance, if you want to remove all cached data for the `TodosQuery`, you can do something like this:
 
@@ -418,7 +418,7 @@ export namespace TodosQuery {
 
 ### Setting Cached Data
 
-When it comes to setting cached data, you have two options:
+When it comes to setting cached data, you've got two options:
 
 - Implement `QueryPersister.set` within the namespace's exported `set` function
 - Create a `useSyncLocal` hook for each query to periodically sync local and in-memory data, treating the latter as the source of truth
@@ -479,11 +479,13 @@ export namespace TodosQuery {
 }
 ```
 
+As you can see, this follows the same pattern we used in `MyHttpClient.makeCachedRequest` - we just encode the data and store it in IndexedDB. Pretty straightforward!
+
 > If your queries update frequently, consider either debouncing the computation that communicates with the `QueryPersister` or exploring the second approach mentioned above.
 
 ### Mutations
 
-For mutations, we follow a similar pattern to queries. You can create a schema for the mutation's input:
+As for mutations, it's not much different from queries. You can create a schema for the mutation's input:
 
 ```ts
 class Input extends Schema.Class<Input>("Input")({
@@ -541,7 +543,9 @@ export namespace CreateTask {
 }
 ```
 
-Notice how we use `withPermits(1)` to prevent race conditions.
+We store an array of inputs since a mutation can be triggered multiple times.
+
+> Note the use of `withPermits(1)` to prevent concurrent access to stored data.
 
 With this setup, you can create a `useSyncLocal` hook for synchronizing stored input with the server, and a `useLocal` hook for accessing stored input. Ideally, the hook would return optimistic items so users can see changes even offline and manage them as needed.
 
