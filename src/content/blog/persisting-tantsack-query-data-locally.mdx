@@ -67,21 +67,17 @@ const transformedTodoSchema = z.object({
 But you're not accounting for the fact that you'd have to serialize and deserialize the JSON data. So, for instance, instead of `createdAt: Date`, you'd have to do `createdAt: string` and apply the transformation from `string` to `Date`:
 
 ```ts
-const transformedTodoSchema = z
-  .object({
-    id: z.string(),
-    title: z.string(),
-    status: z.nativeEnum(TodoStatus),
-    // spotlight-start
-    createdAt: z.string().datetime()
-    // spotlight-end
-  })
+const transformedTodoSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.nativeEnum(TodoStatus),
   // spotlight-start
-  .transform((data) => ({
-    ...data,
-    createdAt: new Date(data.createdAt)
-  }));
-// spotlight-end
+  createdAt: z
+    .string()
+    .datetime()
+    .transform((dateStr) => new Date(dateStr))
+  // spotlight-end
+});
 ```
 
 This becomes cumbersome very quickly, and you can imagine how this would scale.
@@ -195,7 +191,7 @@ const Todo = Schema.transform(
 );
 ```
 
-However, since Effect Schema comes with a lot of built-in transformations, such as `pluck`, `rename`, etc, there's no need to manually define these transformations (at least for this example, though your requirements may be different).
+However, since Effect Schema comes with a lot of built-in transformations, such as `pluck`, `rename`, etc, there's no need to manually define these transformations for this example - though it totally depends on what you need.
 
 ### IndexedDB Abstraction
 
