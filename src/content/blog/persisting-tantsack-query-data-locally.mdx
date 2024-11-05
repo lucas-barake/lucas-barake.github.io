@@ -8,7 +8,7 @@ One of the main challenges I've faced when using TanStack Query is achieving off
 
 I've looked at various solutions online, but they either don't play nice with TanStack Query's data layer or are so limited that you might as well build your own solution. So, I thought, "there has to be a better way," and that's when I remembered Effect Schema.
 
-## Enter Effect Schema
+### Enter Effect Schema
 
 If you're not familiar with [Effect Schema](https://effect.website/docs/schema/introduction/), think of it as an evolution of validators like Zod or Yup. While most validators only transform `unknown` into your type `T`, Effect Schema provides bi-directional transformation - allowing you to go from `From` to `To` and back again. This capability enables us to:
 
@@ -82,7 +82,7 @@ const transformedTodoSchema = z.object({
 
 This becomes cumbersome very quickly, and you can imagine how this would scale.
 
-## Effect Schema to the Rescue
+### Effect Schema to the Rescue
 
 This is where Effect Schema really shines. Instead of having to maintain two separate schemas and manually handle serialization/deserialization, we can define a single schema that handles both the validation and transformation in both directions:
 
