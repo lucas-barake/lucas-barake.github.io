@@ -536,16 +536,15 @@ export namespace CreateTask {
             (error) => error._tag === "RequestError" && error.reason === "Transport",
             () =>
               Effect.gen(function* () {
-                const storedInput = yield* IndexedDB.get(JSON.stringify(makeMutationKey())).pipe(
+                const inputToStore = yield* IndexedDB.get(JSON.stringify(makeMutationKey())).pipe(
                   Effect.flatMap(identity),
                   Effect.flatMap(Schema.decodeUnknown(Schema.Array(Input))),
                   Effect.map(Array.append(input)),
-                  Effect.orElseSucceed((): readonly Input[] => [input])
+                  Effect.orElseSucceed((): readonly Input[] => [input]),
+                  Effect.flatMap(Schema.encode(Schema.Array(Input)))
                 );
 
-                const decodedInput = yield* Schema.decodeUnknown(Schema.Array(Input))(storedInput);
-
-                yield* IndexedDB.set(JSON.stringify(makeMutationKey()), decodedInput);
+                yield* IndexedDB.set(JSON.stringify(makeMutationKey()), inputToStore);
               }).pipe(persisterSemaphore.withPermits(1))
           )
         )
