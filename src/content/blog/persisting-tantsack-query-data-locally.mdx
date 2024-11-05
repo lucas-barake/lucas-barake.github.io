@@ -124,24 +124,36 @@ const saveTodos = (todos: ParsedTodo[]) => {
 Which means that if we do this:
 
 ```ts
-const decodedTodo = Schema.decodeSync(Todo)({
+const todo = {
   created_at: "2024-01-01",
   id: "1",
   status: TodoStatus.Pending,
   title: "Hello"
-});
+};
 
-console.log(Schema.encodeSync(Todo)(decodedTodo));
+const decodedTodo = Schema.decodeSync(Todo)(todo);
+console.log(decodedTodo);
+
+const encodedTodo = Schema.encodeSync(Todo)(decodedTodo);
+console.log(encodedTodo);
 ```
 
 We get:
 
-```json
+```ts
+// Decoded
 {
-  "id": "1",
-  "title": "Hello",
-  "status": "pending",
-  "created_at": "2024-01-01T00:00:00.000Z"
+  id: '1',
+  title: 'Hello',
+  status: 'pending',
+  createdAt: 2024-01-01T00:00:00.000Z
+}
+// Encoded
+{
+  id: '1',
+  title: 'Hello',
+  status: 'pending',
+  created_at: '2024-01-01T00:00:00.000Z'
 }
 ```
 
