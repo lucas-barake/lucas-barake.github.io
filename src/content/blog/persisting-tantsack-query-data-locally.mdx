@@ -436,12 +436,12 @@ export namespace TodosQuery {
 
 ### Setting Cached Data
 
-There are two approaches you can take when it comes to setting cached data:
+When it comes to setting cached data, you have two options:
 
-- Implementing `QueryPersister.set` within the namespace's exported `set` function.
-- Creating a `useSyncLocal` hook for each query to periodically synchronize local data with in-memory data, treating the latter as the source of truth.
+- Implement `QueryPersister.set` within the namespace's exported `set` function
+- Create a `useSyncLocal` hook for each query to periodically sync local and in-memory data, treating the latter as the source of truth
 
-For simplicity, let's go with the first approach:
+For simplicity's sake, let's explore the first approach.
 
 ```ts
 export namespace TodosQuery {
@@ -497,11 +497,11 @@ export namespace TodosQuery {
 }
 ```
 
-> If your queries have a high frequency of updates, you might want to consider either debouncing the `set` function or exploring the second approach mentioned above.
+> If your queries update frequently, consider either debouncing the `set` function or exploring the second approach mentioned above.
 
 ### Mutations
 
-For mutations, the idea is the same as with queries. You can create a schema for the mutation's input:
+For mutations, we follow a similar pattern to queries. You can create a schema for the mutation's input:
 
 ```ts
 class Input extends Schema.Class<Input>("Input")({
@@ -513,7 +513,7 @@ class Input extends Schema.Class<Input>("Input")({
 }) {}
 ```
 
-And then you can use `IndexedDB` with the mutation's key to `encode` and store the input data:
+And then use `IndexedDB` with the mutation's key to encode and store the input data:
 
 ```ts
 export namespace CreateTask {
@@ -563,18 +563,17 @@ export namespace CreateTask {
 }
 ```
 
-Notice how we use a `withPermits(1)` to ensure that we prevent race conditions.
+Notice how we use `withPermits(1)` to prevent race conditions.
 
-With this, you can now export a `useSyncLocal` hook that will synchronize the stored input with the server, and a `useLocal` hook that will let you access the stored input (ideally, the hook would return the optimistic items so that you can render them in your UI alongside with the actual query - this could allow the user to see the changes even when offline, and also to possibly delete/edit them on command).
+With this setup, you can create a `useSyncLocal` hook for synchronizing stored input with the server, and a `useLocal` hook for accessing stored input. Ideally, the hook would return optimistic items so users can see changes even offline and manage them as needed.
 
 ### Conclusion
 
-Great! With this approach, your users can still interact with your application even when offline (as long as they have cached data).
+Great! Now your users can interact with your application even offline (assuming they have cached data).
 
 Here's what I recommend doing next:
 
-- Implement a `Connection` service to manage `persistedRequest` based on connection status changes.
-- Extend the caching strategy to mutations by encoding inputs and implementing a system to decode and execute stored mutations when the application starts or regains connectivity. This will also let you automatically invalidate stale mutations.
-- Create helper functions to abstract the logic for persisting and invalidating data for each query/mutation.
+- Implement a `Connection` service to manage forked persisted requests based on connection status
+- Create helper functions to abstract the persistence and invalidation logic for queries/mutations
 
-While this might feel somewhat manual (and potentially overwhelming), the benefit is complete control over your data layer. You can apply this same strategy to React Native as well. All you need is a different `IndexedDB` implementation (or better yet, rename this to a more generic `Cache` service), and you're set!
+While this approach might feel manual (and potentially overwhelming), it gives you complete control over your data layer. The best part? You can apply this same strategy to React Native - just implement a different IndexedDB (or better yet, rename it to a more generic Cache service) and you're good to go!
