@@ -83,6 +83,7 @@ const Todo = Schema.Struct({
   // Transform from string to Date and back
   created_at: Schema.DateFromString
 }).pipe(
+  // Transform from created_at to createdAt and back
   Schema.rename({
     created_at: "createdAt"
   })
@@ -99,7 +100,7 @@ The power of this approach is that it:
 
 - Unifies parsing and transformation in a single schema definition
 - Provides automatic data validation when schemas change
-- Ensures type safety across your entire application
+- Ensures type safety across all system boundaries
 - Simplifies data transformation logic
 
 > If you're interested in diving deeper into Effect Schema, I recommend checking out my [crash course](https://youtu.be/nQA_JsCozU4).
