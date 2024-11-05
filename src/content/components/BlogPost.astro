@@ -10,29 +10,27 @@ const { title, description, date, image } = Astro.props;
 import BaseLayout from "../../layouts/BaseLayout.astro";
 ---
 
-<BaseLayout 
-  title={title}
-  description={description}
-  image={image}
-  article={true}
->
-  <script type="application/ld+json" set:html={JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "BlogPosting",
-    "headline": title,
-    "description": description,
-    "image": image ? new URL(image, Astro.site) : undefined,
-    "datePublished": new Date(date).toISOString(),
-    "dateModified": new Date(date).toISOString(),
-    "author": {
-      "@type": "Person",
-      "name": "Lucas Barake",
-      "url": "https://github.com/lucas-barake"
-    }
-  })} />
+<BaseLayout title={title} description={description} image={image} article={true}>
+  <script
+    type="application/ld+json"
+    set:html={JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      headline: title,
+      description: description,
+      image: image ? new URL(image, Astro.site) : undefined,
+      datePublished: new Date(date).toISOString(),
+      dateModified: new Date(date).toISOString(),
+      author: {
+        "@type": "Person",
+        name: "Lucas Barake",
+        url: "https://github.com/lucas-barake"
+      }
+    })}
+  />
 
   <article
-    class="prose prose-invert mx-auto max-w-3xl prose-pre:p-0 prose-h1:text-4xl prose-h2:text-3xl prose-h3:text-2xl prose-h4:text-xl prose-strong:text-white/90 prose-a:text-blue-400 hover:prose-a:text-blue-300 prose-code:text-blue-300 prose-blockquote:border-blue-500 pb-20"
+    class="prose prose-invert mx-auto max-w-3xl prose-pre:p-0 prose-h1:text-4xl prose-h2:text-3xl prose-pre:my-4 prose-h3:text-2xl prose-h4:text-xl prose-strong:text-white/90 prose-a:text-blue-400 hover:prose-a:text-blue-300 prose-code:text-blue-300 prose-blockquote:border-blue-500 prose-p:my-2 pb-20"
   >
     <header class="not-prose">
       <time class="text-sm text-neutral-300">
@@ -130,7 +128,6 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
   .prose pre {
     background-color: #1a1b26 !important;
     border-radius: 0.5rem;
-    margin: 2rem 0;
     overflow-x: auto;
     position: relative;
   }
@@ -269,7 +266,7 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
     background-color: rgba(23, 23, 23, 0.8);
     backdrop-filter: blur(8px);
     margin: 0 !important;
-    padding: 1rem 0;
+    padding: 1rem 0 0.5rem 0;
     z-index: 10;
     border-bottom: 1px solid rgba(75, 85, 99, 0.2);
     width: 100%;
@@ -290,13 +287,13 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
   .prose h2 + *,
   .prose h3 + *,
   .prose h4 + * {
-    margin-top: 2rem !important;
+    margin-top: 0.75rem !important;
   }
 
   /* Content spacing */
   .prose > div > *:not(h2):not(h3):not(h4) {
-    margin-top: 1.5rem;
-    margin-bottom: 1.5rem;
+    margin-top: 0.75rem;
+    margin-bottom: 0.75rem;
   }
 
   /* First heading should have no top margin */
