@@ -562,11 +562,15 @@ With this setup, you can create a `useSyncLocal` hook for synchronizing stored i
 
 ### Conclusion
 
-Great! Now your users can interact with your application even offline (assuming they have cached data).
+I just want to point out that this approach is pragmatic and not perfect. Since it all revolves around validating against a single schema (without versioning or migrations), users will experience interruptions when the schema changes. Now, it's not ideal, but the benefits far outweigh the drawbacks:
 
-Here's what I recommend doing next:
+- Simplicity: it's a very straightforward approach that requires minimal effort
+- Developer experience: you have full control over the data layer
+- User experience: your application inherently becomes way more responsive - initial loads and time-to-first-action will be way faster
+
+If you want to explore this further, here's what I recommend doing next:
 
 - Implement a `Connection` service to manage forked persisted requests based on connection status
 - Create helper functions to abstract the persistence and invalidation logic for queries/mutations
 
-While this approach might feel manual (and potentially overwhelming), it gives you complete control over your data layer. The best part? You can apply this same strategy to React Native - just implement a different `IndexedDB` (or better yet, rename it to a more generic `Cache` service) and you're good to go!
+> Pst: you can apply this same strategy to React Native - just implement a different `IndexedDB` (or better yet, rename it to a more generic `Cache` service) and you're good to go!
