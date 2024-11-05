@@ -10,13 +10,13 @@ I've looked at various solutions online, but they either don't play nice with Ta
 
 ### Enter Effect Schema
 
-If you're not familiar with [Effect Schema](https://effect.website/docs/schema/introduction/), think of it as an evolution of validators like Zod or Yup. While most validators only transform `unknown` into your type `T`, Effect Schema provides bi-directional transformation - allowing you to go from `From` to `To` and back again. This capability enables us to:
+If you're not familiar with [Effect Schema](https://effect.website/docs/schema/introduction/), think of it as an evolution of validators like Zod or Yup. While most validators only transform `unknown` into your type `T`, Effect Schema provides bi-directional parsing - allowing you to go from `From` to `To` and back again. This capability enables us to:
 
-- Eliminate version management and migrations
-- Let schema changes automatically invalidate cache entries
-- Have invalid/stale data trigger new queries automatically
+- Eliminate the need for multiple schema versions and migrations
+- Automatically detect when cached data is invalid due to schema changes
+- Trigger new queries when stored data no longer matches the current schema
 
-So, to give you an example, let's say we have the following response from our API:
+Let's look at a practical example. Say we have this response type from our API:
 
 ```ts
 enum TodoStatus {
@@ -29,14 +29,14 @@ type Todo = {
   id: string;
   title: string;
   status: TodoStatus;
-  created_at: string;
+  created_at: string; // ISO date string
 };
 ```
 
-Now, suppose you need to rename `created_at` to `createdAt` and transform that `string` timestamp into a proper `Date` object. With Zod, you might write something like this:
+Now, suppose you want to transform this into a cleaner model where `created_at` becomes `createdAt` and that ISO string becomes a proper `Date` object. With Zod, you'd need to write something like this:
 
 ```ts
-// Decoding from API response
+// Parsing from API response to your model
 const todoDecoder = z
   .object({
     id: z.string(),
@@ -50,9 +50,10 @@ const todoDecoder = z
   }));
 ```
 
-But now you need another schema for encoding back to API format:
+But now you need another schema to transform back to the API format:
 
 ```ts
+// Transform from your model back to API format
 const todoEncoder = z
   .object({
     id: z.string(),
@@ -66,11 +67,11 @@ const todoEncoder = z
   }));
 ```
 
-The issue here is that Zod only handles one-way transformation. You need separate schemas for decoding and encoding, which you must maintain manually. This becomes cumbersome very quickly, and you can imagine how this would scale.
+The limitation here is that Zod only handles one-way parsing. You need separate schemas for each direction, which you must maintain manually and keep in sync. This becomes unwieldy as your schemas grow more complex, especially when dealing with nested objects or arrays.
 
 ### Effect Schema to the Rescue
 
-This is where Effect Schema really shines. Instead of having to maintain two separate schemas and manually handle serialization/deserialization, we can define a single schema that handles both the validation and transformation in both directions:
+This is where Effect Schema really shines. Instead of maintaining two separate schemas, Effect Schema lets us define a single schema that handles both parsing and transformation bi-directionally:
 
 ```ts
 import { Schema } from "@effect/schema";
@@ -94,12 +95,12 @@ type ParsedTodo = typeof Todo.Type;
 // { id: string; title: string; status: TodoStatus; createdAt: Date; }
 ```
 
-The strength of this approach is that it:
+The power of this approach is that it:
 
-- Unifies validation and serialization in a single schema definition
-- Automatically invalidates cached data when schemas change
-- Provides complete type safety throughout the application
-- Eliminates migration complexity
+- Unifies parsing and transformation in a single schema definition
+- Provides automatic data validation when schemas change
+- Ensures type safety across your entire application
+- Simplifies data transformation logic
 
 > If you're interested in diving deeper into Effect Schema, I recommend checking out my [crash course](https://youtu.be/nQA_JsCozU4).
 
@@ -147,7 +148,7 @@ Now we're ready to store this in IndexedDB!
 
 ### Custom Decode/Encode
 
-Side note: you could have your own custom `decode` and `encode` functions:
+Side note: you can also define your own custom transformations when you need more control:
 
 ```ts
 const IncomingTodo = Schema.Struct({
@@ -158,11 +159,11 @@ const IncomingTodo = Schema.Struct({
 });
 
 const Todo = Schema.transform(
-  IncomingTodo, // From
+  IncomingTodo, // From (API format)
   Schema.Struct({
     ...IncomingTodo.omit("created_at").fields,
     createdAt: Schema.DateFromSelf
-  }), // To
+  }), // To (Model format)
   {
     decode: (from) => ({
       ...from,
@@ -177,7 +178,7 @@ const Todo = Schema.transform(
 );
 ```
 
-However, since Effect Schema comes with a lot of built-in transformations, such as `pluck`, `rename`, etc, there's no need to manually define these transformations for this example - though it totally depends on what you need.
+However, since Effect Schema comes with a lot of built-in transformations like `pluck`, `omit`, `rename`, etc, there's no need to manually define these transformations for this example - though it ultimately depends on what you need.
 
 ### IndexedDB Abstraction
 
