@@ -482,12 +482,12 @@ export namespace TodosQuery {
   // spotlight-start
   export const set = (updater: (updater: Result | undefined) => Result | undefined) =>
     Effect.gen(function* () {
-      const data = Option.fromNullable(queryClient.setQueryData<Result>(makeQueryKey(), updater));
+      const data = queryClient.setQueryData<Result>(makeQueryKey(), updater);
 
       const stringifiedQueryKey = JSON.stringify(makeQueryKey());
 
-      if (Option.isSome(data)) {
-        yield* QueryPersister.store(stringifiedQueryKey, yield* Schema.encode(Result)(data.value));
+      if (data !== undefined) {
+        yield* QueryPersister.store(stringifiedQueryKey, yield* Schema.encode(Result)(data));
       } else {
         yield* QueryPersister.remove(stringifiedQueryKey);
       }
