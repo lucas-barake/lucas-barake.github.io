@@ -536,7 +536,8 @@ export namespace CreateTask {
             (error) => error._tag === "RequestError" && error.reason === "Transport",
             () =>
               Effect.gen(function* () {
-                const inputToStore = yield* IndexedDB.get(JSON.stringify(makeMutationKey())).pipe(
+                const key = JSON.stringify(makeMutationKey());
+                const inputToStore = yield* IndexedDB.get(key).pipe(
                   Effect.flatMap(identity),
                   Effect.flatMap(Schema.decodeUnknown(Schema.Array(Input))),
                   Effect.map(Array.append(input)),
@@ -544,7 +545,7 @@ export namespace CreateTask {
                   Effect.flatMap(Schema.encode(Schema.Array(Input)))
                 );
 
-                yield* IndexedDB.set(JSON.stringify(makeMutationKey()), inputToStore);
+                yield* IndexedDB.set(key, inputToStore);
               }).pipe(persisterSemaphore.withPermits(1))
           )
         )
