@@ -313,9 +313,7 @@ class MyHttpClient extends Effect.Service<MyHttpClient>()("MyHttpClient", {
       request: HttpClientRequest.HttpClientRequest;
     }) =>
       Effect.gen(function* () {
-        const stringifiedQueryKey = yield* Effect.try(() => JSON.stringify(queryKey)).pipe(
-          Effect.withSpan("JSON.stringify")
-        );
+        const stringifiedQueryKey = JSON.stringify(queryKey);
 
         const cachedData = yield* queryPersister.get(stringifiedQueryKey, schema);
 
