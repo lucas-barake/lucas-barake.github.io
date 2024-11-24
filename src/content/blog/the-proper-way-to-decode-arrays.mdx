@@ -124,7 +124,7 @@ const UsersSchema = GracefulArrayFromFailable(UserSchema);
 
 If we had implemented this at the parsing level (like creating an abstraction over `Schema.decode`), we would have needed to handle each level of nesting separately, which would require a lot of boilerplate.
 
-## Bonus: Partitioning Decoding
+## Bonus: Partition Decoding
 
 While `GracefulArrayFromFailable` is great when you just want the valid items, sometimes you need to know exactly what failed. Maybe you want to:
 
