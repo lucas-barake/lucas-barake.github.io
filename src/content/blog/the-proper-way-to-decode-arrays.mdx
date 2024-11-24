@@ -45,12 +45,12 @@ Here's how we can create a graceful array helper:
 ```ts
 import { Array, Schema, Either, identity, Predicate, ParseResult } from "effect";
 
-const GracefulArrayFromFailable = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
+const ArrayFromFallible = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
   Schema.Array(
     Schema.NullOr(schema).annotations({
       decodingFallback: (issue) => {
         const formattedIssue = ParseResult.TreeFormatter.formatIssueSync(issue);
-        console.warn("[GracefulArrayFromFailable]:\n", formattedIssue);
+        console.warn("[ArrayFromFallible]:\n", formattedIssue);
         return Either.right(null);
       }
     })
@@ -81,7 +81,7 @@ const TodoSchema = Schema.Struct({
   identifier: "Todo"
 });
 
-const TodosSchema = GracefulArrayFromFailable(TodoSchema);
+const TodosSchema = ArrayFromFallible(TodoSchema);
 
 const apiResponse = [
   { id: 1, title: "Buy milk", completed: false },
@@ -90,7 +90,7 @@ const apiResponse = [
 ];
 
 const todos = Schema.decodeUnknownSync(TodosSchema)(apiResponse);
-// [GracefulArrayFromFailable]:
+// [ArrayFromFallible]:
 // Todo | null
 // ├─ Todo
 // │  └─ ["id"]
@@ -114,19 +114,19 @@ The great thing about doing it at the schema level is that you can have nested a
 const UserSchema = Schema.Struct({
   id: Schema.Number,
   name: Schema.String,
-  todos: GracefulArrayFromFailable(TodoSchema)
+  todos: ArrayFromFallible(TodoSchema)
 }).annotations({
   identifier: "User"
 });
 
-const UsersSchema = GracefulArrayFromFailable(UserSchema);
+const UsersSchema = ArrayFromFallible(UserSchema);
 ```
 
 If we had implemented this at the parsing level (like creating an abstraction over `Schema.decode`), we would have needed to handle each level of nesting separately, which would require a lot of boilerplate.
 
 ## Bonus: Partition Decoding
 
-While `GracefulArrayFromFailable` is great when you just want the valid items, sometimes you need to know exactly what failed. Maybe you want to:
+While `ArrayFromFallible` is great when you just want the valid items, sometimes you need to know exactly what failed. Maybe you want to:
 
 - Show users which items had issues and why
 - Send error reports to your analytics
@@ -179,4 +179,4 @@ console.log(ParseResult.TreeFormatter.formatErrorsSync(errors));
 
 And we're good to go!
 
-I'd argue that in 90% of cases, you should be using a helper like `GracefulArrayFromFailable` instead of just `z.array()`, but of course, it depends on your use case.
+I'd argue that in 90% of cases, you should be using a helper like `ArrayFromFallible` instead of just `z.array()`, but of course, it depends on your use case.
