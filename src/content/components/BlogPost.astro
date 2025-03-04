@@ -29,24 +29,35 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
     })}
   />
 
-  <article
-    class="prose prose-invert mx-auto max-w-3xl prose-pre:p-0 prose-h1:text-4xl prose-h2:text-3xl prose-pre:my-4 prose-h3:text-2xl prose-h4:text-xl prose-strong:text-white/90 prose-a:text-blue-400 hover:prose-a:text-blue-300 prose-code:text-blue-300 prose-blockquote:border-blue-500 prose-p:my-2 pb-20"
-  >
-    <header class="not-prose">
-      <time class="text-sm text-neutral-300">
-        {
-          new Date(date).toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "long",
-            day: "numeric"
-          })
-        }
-      </time>
-      <h1 class="text-4xl font-bold mt-2 mb-4">{title}</h1>
-    </header>
+  <div class="max-w-3xl mx-auto relative">
+    <nav
+      class="hidden xl:block xl:fixed xl:left-[max(0px,calc(50%-45rem))] xl:w-[250px] top-20 pl-4 h-fit max-h-[80vh] overflow-y-auto text-sm"
+    >
+      <h2 class="font-semibold mb-4 text-neutral-200">Table of Contents</h2>
+      <ul class="space-y-2 text-neutral-400" id="toc">
+        <!-- Will be populated by JavaScript -->
+      </ul>
+    </nav>
 
-    <slot />
-  </article>
+    <article
+      class="prose prose-invert mx-auto max-w-3xl prose-pre:p-0 prose-h1:text-4xl prose-h2:text-3xl prose-pre:my-4 prose-h3:text-2xl prose-h4:text-xl prose-strong:text-white/90 prose-a:text-blue-400 hover:prose-a:text-blue-300 prose-code:text-blue-300 prose-blockquote:border-blue-500 prose-p:my-2 pb-20"
+    >
+      <header class="not-prose">
+        <time class="text-sm text-neutral-300">
+          {
+            new Date(date).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "long",
+              day: "numeric"
+            })
+          }
+        </time>
+        <h1 class="text-4xl font-bold mt-2 mb-4">{title}</h1>
+      </header>
+
+      <slot />
+    </article>
+  </div>
 </BaseLayout>
 
 <script>
@@ -95,7 +106,81 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
     updateStickyHeading();
   }
 
+  function handleTableOfContents() {
+    const headings = Array.from(document.querySelectorAll(".prose h2, .prose h3, .prose h4"));
+    const tocList = document.getElementById("toc");
+
+    if (!tocList) return;
+
+    headings.forEach((heading, index) => {
+      const link = document.createElement("a");
+      link.href = `#${heading.id || ""}`;
+      link.textContent = `${index + 1}. ${heading.textContent}`;
+      link.className = "block transition-colors duration-200 hover:text-neutral-200";
+
+      const listItem = document.createElement("li");
+      listItem.appendChild(link);
+
+      if (heading.tagName === "H3") {
+        listItem.style.paddingLeft = "1rem";
+      } else if (heading.tagName === "H4") {
+        listItem.style.paddingLeft = "2rem";
+      }
+
+      tocList.appendChild(listItem);
+    });
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const id = entry.target.id;
+          const tocItem = tocList.querySelector(`a[href="#${id}"]`);
+
+          if (entry.isIntersecting) {
+            tocList.querySelectorAll("a").forEach((item) => {
+              item.classList.remove("text-white");
+            });
+            tocItem?.classList.add("text-white");
+          }
+        });
+      },
+      {
+        rootMargin: "-20px 0px -80%",
+        threshold: 0
+      }
+    );
+
+    headings.forEach((heading) => {
+      if (heading.id) {
+        observer.observe(heading);
+      }
+    });
+
+    tocList.querySelectorAll("a").forEach((link) => {
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        const targetId = link.getAttribute("href")?.slice(1);
+        const targetElement = document.getElementById(targetId || "");
+        if (targetElement) {
+          headings.forEach((h) => {
+            (h as HTMLElement).style.position = "static";
+          });
+
+          const offset = -5;
+          const targetPosition =
+            targetElement.getBoundingClientRect().top + window.scrollY - offset;
+
+          window.scrollTo({
+            top: targetPosition,
+            behavior: "smooth"
+          });
+        }
+      });
+    });
+  }
+
   handleStickyHeaders();
+  handleTableOfContents();
 </script>
 
 <style is:global>
@@ -302,5 +387,27 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
   .prose > div > h4:first-child {
     margin-top: 0;
     padding-top: 0;
+  }
+
+  /* Add these new styles */
+  #toc {
+    scrollbar-width: thin;
+  }
+
+  #toc::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  #toc::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  #toc::-webkit-scrollbar-thumb {
+    background: rgb(64, 64, 64);
+    border-radius: 3px;
+  }
+
+  #toc::-webkit-scrollbar-thumb:hover {
+    background: rgb(96, 96, 96);
   }
 </style>

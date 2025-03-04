@@ -1,0 +1,182 @@
+---
+title: The Proper Way to Decode Arrays
+date: 2024-11-24
+description: "Array validation shouldn't be all-or-nothing. It's far too common to blindly use z.array() and lose valid data when a single item fails validation. Let's see how to build a more graceful approach using Effect Schema."
+---
+
+I see this pattern way too often when working with Zod (or any schema validation library, really):
+
+```ts
+const TodoSchema = z.object({
+  id: z.number(),
+  title: z.string(),
+  completed: z.boolean()
+});
+
+const TodosSchema = z.array(TodoSchema);
+```
+
+Seems simple enough, right? But there's a major problem that will bite you (and your users) later: if a single item in that array fails validation, **everything** fails.
+
+Here's what I mean:
+
+```ts
+const apiResponse = [
+  { id: 1, title: "Buy milk", completed: false },
+  { id: "2", title: null, completed: true }, // 💥 Malformed data
+  { id: 3, title: "Clean house", completed: false }
+];
+
+// Throws error - you lose ALL todos!
+TodosSchema.parse(apiResponse);
+```
+
+Even though two of those todos are perfectly valid, that one bad apple spoils the bunch. This gets especially painful when:
+
+- You're dealing with third-party APIs that might be... let's say "inconsistent" (far too common)
+- Your backend team decided to change the structure of the data without migrations (also far too common)
+
+## A Better Approach
+
+Instead of throwing away perfectly good data, let's build something more graceful using [Effect Schema](https://effect.website/docs/schema/introduction/). If you're not familiar with [Effect Schema](https://effect.website/docs/schema/introduction/), think of it as the next evolution in data validation. While libraries like Zod or Yup only transform `unknown` into your type `T`, Effect Schema provides bi-directional parsing - you can go from `From` to `To` and back again. Plus, its API is incredibly elegant once you get used to it.
+
+Here's how we can create a graceful array helper:
+
+```ts
+import { Array, Schema, Either, identity, Predicate, ParseResult } from "effect";
+
+const ArrayFromFallible = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
+  Schema.Array(
+    Schema.NullOr(schema).annotations({
+      decodingFallback: (issue) => {
+        const formattedIssue = ParseResult.TreeFormatter.formatIssueSync(issue);
+        console.warn("[ArrayFromFallible]:\n", formattedIssue);
+        return Either.right(null);
+      }
+    })
+  ).pipe(
+    Schema.transform(Schema.typeSchema(Schema.Array(schema)), {
+      decode: Array.filter(Predicate.isNotNull),
+      encode: identity,
+      strict: true
+    })
+  );
+```
+
+The idea is simple. We:
+
+1. Wrap our schema in a nullable schema
+2. When a value fails to parse, log a warning and return null
+3. Apply a transform that filters out all null values
+4. End up with a clean array of valid items
+
+Let's see it in action:
+
+```ts
+const TodoSchema = Schema.Struct({
+  id: Schema.Number,
+  title: Schema.String,
+  completed: Schema.Boolean
+}).annotations({
+  identifier: "Todo"
+});
+
+const TodosSchema = ArrayFromFallible(TodoSchema);
+
+const apiResponse = [
+  { id: 1, title: "Buy milk", completed: false },
+  { id: "2", title: null, completed: true }, // 💥 Malformed data
+  { id: 3, title: "Clean house", completed: false }
+];
+
+const todos = Schema.decodeUnknownSync(TodosSchema)(apiResponse);
+// [ArrayFromFallible]:
+// Todo | null
+// ├─ Todo
+// │  └─ ["id"]
+// │     └─ Expected number, actual "2"
+// └─ Expected null, actual {"id":"2","title":null,"completed":true}
+
+console.log(todos);
+// => [
+//   { id: 1, title: "Buy milk", completed: false },
+//   { id: 3, title: "Clean house", completed: false }
+// ]
+```
+
+Clean, type-safe, and most importantly - resilient. Instead of failing completely when encountering invalid data, we gracefully handle the error while preserving all valid items.
+
+## Composable All The Way Down
+
+The great thing about doing it at the schema level is that you can have nested arrays and they will still be decoded gracefully:
+
+```ts
+const UserSchema = Schema.Struct({
+  id: Schema.Number,
+  name: Schema.String,
+  todos: ArrayFromFallible(TodoSchema)
+}).annotations({
+  identifier: "User"
+});
+
+const UsersSchema = ArrayFromFallible(UserSchema);
+```
+
+If we had implemented this at the parsing level (like creating an abstraction over `Schema.decode`), we would have needed to handle each level of nesting separately, which would require a lot of boilerplate.
+
+## Bonus: Partition Decoding
+
+While `ArrayFromFallible` is great when you just want the valid items, sometimes you need to know exactly what failed. Maybe you want to:
+
+- Show users which items had issues and why
+- Send error reports to your analytics
+- Handle the invalid items differently
+
+For these cases, we can create a partition decoder:
+
+```ts
+import { ParseResult, Schema, Either } from "effect";
+import { type ParseOptions } from "effect/SchemaAST";
+
+const decodeUnknownPartition = <A, I>(schema: Schema.Schema<A, I>, options?: ParseOptions) => {
+  const decoder = Schema.decodeUnknownEither(schema, options);
+
+  return (self: readonly unknown[]): [ParseResult.ParseError[], A[]] =>
+    self.reduce<[ParseResult.ParseError[], A[]]>(
+      ([excluded, satisfied], item) => {
+        return Either.match(decoder(item), {
+          onLeft: (error) => [Array.append(excluded, error), satisfied],
+          onRight: (value) => [excluded, Array.append(satisfied, value)]
+        });
+      },
+      [[], []]
+    );
+};
+```
+
+Now we can split our data into successes and failures:
+
+```ts
+const apiResponse = [
+  { id: 1, title: "Buy milk", completed: false },
+  { id: "2", title: null, completed: true }, // 💥 Invalid
+  { id: 3, title: "Clean house", completed: false }
+];
+
+const [errors, todos] = decodeUnknownPartition(TodoSchema)(apiResponse);
+
+console.log(todos);
+// => [
+//   { id: 1, title: "Buy milk", completed: false },
+//   { id: 3, title: "Clean house", completed: false }
+// ]
+
+console.log(ParseResult.TreeFormatter.formatErrorsSync(errors));
+// Todo
+// └─ ["id"]
+//    └─ Expected number, actual "2"
+```
+
+And we're good to go!
+
+I'd argue that in 90% of cases, you should be using a helper like `ArrayFromFallible` instead of just `z.array()`, but of course, it depends on your use case.
