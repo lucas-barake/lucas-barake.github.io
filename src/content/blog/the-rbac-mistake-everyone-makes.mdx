@@ -1,0 +1,395 @@
+---
+title: The RBAC Mistake Everyone Makes - ACLs in TypeScript & Effect
+date: 2025-03-04
+description: "One of the main challenges I've faced when using TanStack is achieving offline usage while having full control over the data layer. In this blog post, we'll explore how to use Effect and Effect Schema, along with the browser's IndexedDB, to persist TanStack Query data locally."
+---
+
+I've seen a lot of apps tie authorization logic directly to roles. Like, `if user.role == 'admin'`, grant access.
+
+But the problem is: roles are just labels. RBAC—Role-Based Access Control—is about grouping permissions into roles like 'Admin' or 'Moderator'. But roles themselves aren't actionable. They're just... buckets.
+
+So... why do we use them? Because we, humans, suck at managing 50 individual permissions; roles simplify things for us. But in code, checking for a role is the worst thing you could do - if you hardcode role checks, you're stuck maintaining a mess of `if/else` statements every time roles change.
+
+That's where ACLs—Access Control Lists—come into play. An ACL is just a list of specific permissions attached to a user. Instead of asking 'Is this person an Admin?', you ask 'Do they have the `user:delete` permission?'
+
+My tip is to look at roles as the UI layer—how humans organize permissions—and permissions as the source of truth your code actually enforces.
+
+## Typing Permissions
+
+So, what's the solution? First, we need a strongly-typed foundation for our permissions. Instead of loose string checks, we'll create a type-safe permission system.
+
+Here's the first piece of the puzzle - a TypeScript utility that generates our permissions:
+
+```typescript
+type PermissionAction = "read" | "manage" | "delete";
+type PermissionConfig = Record<string, ReadonlyArray<PermissionAction>>;
+
+type InferPermissions<T extends PermissionConfig> = {
+  [K in keyof T]: T[K][number] extends PermissionAction ? `${K & string}:${T[K][number]}` : never;
+}[keyof T];
+
+export const makePermissions = <T extends PermissionConfig>(
+  config: T
+): Array<InferPermissions<T>> => {
+  return Object.entries(config).flatMap(([domain, actions]) =>
+    actions.map((action) => `${domain}:${action}` as InferPermissions<T>)
+  );
+};
+```
+
+What's happening here? We're creating a type-safe way to generate permission strings with a consistent format: `domain:action`. The magic is in the `InferPermissions` type, which creates a union of all possible combinations based on our config.
+
+Now, instead of random string literals scattered throughout our code, we can define our app's permissions in one place:
+
+```ts
+import * as internal from "./internal/policy.js";
+
+const Permissions = internal.makePermissions({
+  posts: ["read", "manage", "delete"],
+  comments: ["read", "manage"]
+} as const);
+```
+
+See what we did? We've explicitly stated that users can read, manage, and delete posts, but they can only read and manage comments - deletion isn't supported. Our type system now reflects our business rules.
+
+This becomes our source of truth. We can use it to create a Schema:
+
+```ts
+export const Permission = Schema.Literal(...Permissions).annotations({
+  identifier: "Permission"
+});
+export type Permission = typeof Permission.Type;
+```
+
+Now we have a `Permission` type that's exactly the union of` "posts:read" | "posts:manage" | "posts:delete" | "comments:read" | "comments:manage"`. The compiler will scream at you if you try to check for `”comments:delete"` - that permission doesn't exist.
+
+## Context: Making User Permissions Available
+
+Now that we have our permissions typed, we need a way to access them throughout our application. Since we’re using Effect, this is where its context system shines:
+
+```typescript
+import * as Context from "effect/Context";
+import * as HttpApiMiddleware from "@effect/platform/HttpApiMiddleware";
+import * as CustomHttpApiError from "./CustomHttpApiError.js";
+
+export class CurrentUser extends Context.Tag("CurrentUser")
+  CurrentUser,
+  {
+    readonly sessionId: string;
+    readonly userId: UserId;
+    readonly permissions: Set<Permission>;
+  }
+>() {}
+
+export class UserAuthMiddleware extends HttpApiMiddleware.Tag<UserAuthMiddleware>()(
+  "UserAuthMiddleware",
+  {
+    failure: CustomHttpApiError.Unauthorized,
+    provides: CurrentUser,
+  },
+) {}
+```
+
+The idea is to leverage Effect's `R` type parameter so we can access the user context anywhere down the pipe. Since I'm using Effect's Platform HttpApi module, I define a simple context that my auth middleware will provide.
+
+For demonstration purposes, this `CurrentUser` context just contains a `sessionId`, `userId`, and `permissions` which is a `Set<Permission>`. In your actual authentication middleware implementation, you'd populate these permissions from decoding a JWT, a database lookup, a Redis cache, or whatever your system uses.
+
+Once provided by the `UserAuthMiddleware`, the `CurrentUser` context becomes available to any Effect that requires it - no matter how deep in your call stack. This is dependency injection on steroids, with full type safety.
+
+## A Simple Implementation Example
+
+To give you a concrete idea of how this works, here's a simple live implementation with a mock constant context:
+
+```typescript
+import * as Schema from "effect/Schema";
+import * as Layer from "effect/Layer;
+import * as Effect from "effect/Effect"
+import { constant } from "effect/Function";
+import * as Policy from "@org/domain/Policy";
+
+const CurrentUserSchema = Schema.Struct({
+  sessionId: Schema.String,
+  userId: UserId,
+  permissions: Schema.Set(Policy.Permission),
+});
+
+export const UserAuthMiddlewareLive = Layer.effect(
+  Policy.UserAuthMiddleware,
+  Effect.sync(
+    constant(
+      // here you'd replace this with code that
+      // extracts tokens from request headers,
+      // validates them, and loads the appropriate
+      // permissions for that user
+      Effect.succeed(
+        CurrentUserSchema.make({
+          sessionId: "sim_12345678",
+          userId: UserId.make("user_12345678"),
+          permissions: new Set(["posts:read", "comments:read"]),
+        }),
+      ),
+    ),
+  ),
+);
+```
+
+## ACL Guards: Enforcing Permissions in Practice
+
+Now that we have our permission system and context in place, let's build the actual guards that enforce access control:
+
+```ts
+/**
+ * Protects an effect by checking if the current user has the required permission.
+ * If the user doesn't have the permission, fails with Forbidden error.
+ */
+export const withPermission = (requiredPermission: Permission) => {
+  return <A, E, R>(
+    self: Effect.Effect<A, E, R>
+  ): Effect.Effect<A, E | CustomHttpApiError.Forbidden, R | CurrentUser> =>
+    Effect.zipRight(
+      CurrentUser.pipe(
+        Effect.flatMap((user) =>
+          user.permissions.has(requiredPermission)
+            ? Effect.void
+            : new CustomHttpApiError.Forbidden()
+        )
+      ),
+      self
+    );
+};
+```
+
+Let's break this down. The `withPermission` function takes a required permission and returns a function that wraps any Effect to protect it. Inside, we use `Effect.zipRight` which runs two effects in sequence - first the permission check, then your original effect. However, it discards the output of the first effect (so the permission check in this case) and gives us the result of the original effect (`self`).
+
+The permission check grabs the `CurrentUser` from context, then checks if the user has the required permission in their permissions set. If they do, we proceed with a `void` effect. If not, we fail with a `Forbidden` error, which short-circuits execution and prevents your protected effect from running at all.
+
+Building on this foundation, we can create more sophisticated permission checks:
+
+```ts
+/**
+ * Protects an effect by checking if the current user has any of the required permissions.
+ * If the user doesn't have any of the permissions, fails with Forbidden error.
+ */
+export const withPermissionAny = (requiredPermissions: NonEmptyReadonlyArray<Permission>) => {
+  return <A, E, R>(
+    self: Effect.Effect<A, E, R>
+  ): Effect.Effect<A, E | CustomHttpApiError.Forbidden, R | CurrentUser> =>
+    Effect.zipRight(
+      CurrentUser.pipe(
+        Effect.flatMap((user) =>
+          requiredPermissions.some((permission) => user.permissions.has(permission))
+            ? Effect.void
+            : new CustomHttpApiError.Forbidden()
+        )
+      ),
+      self
+    );
+};
+
+/**
+ * Protects an effect by checking if the current user has all the required permissions.
+ * If the user doesn't have all permissions, fails with Forbidden error.
+ */
+export const withPermissionAll = (requiredPermissions: NonEmptyReadonlyArray<Permission>) => {
+  return <A, E, R>(
+    self: Effect.Effect<A, E, R>
+  ): Effect.Effect<A, E | CustomHttpApiError.Forbidden, R | CurrentUser> =>
+    Effect.zipRight(
+      CurrentUser.pipe(
+        Effect.flatMap((user) =>
+          requiredPermissions.every((permission) => user.permissions.has(permission))
+            ? Effect.void
+            : new CustomHttpApiError.Forbidden()
+        )
+      ),
+      self
+    );
+};
+```
+
+These helpers give us fine-grained control over permission requirements. `withPermissionAny` allows access if the user has at least one of the specified permissions, while `withPermissionAll` requires all permissions to be present.
+
+With these guards in place, we can now protect any Effect-based operation in our application. Here's how it looks in practice:
+
+```ts
+import { describe, it } from "@effect/vitest";
+import { deepStrictEqual } from "assert";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Layer from "effect/Layer";
+import { UserId } from "../src/EntityIds.js";
+import * as Policy from "../src/Policy.js";
+
+const mockUser = (perms: Array<Policy.Permission>): Policy.CurrentUser["Type"] =>
+  ({
+    sessionId: "test-session",
+    userId: UserId.make("test-user"),
+    permissions: new Set(perms)
+  }) as const;
+
+const provideCurrentUser = (perms: Array<Policy.Permission>) =>
+  Effect.provide(Layer.succeed(Policy.CurrentUser, mockUser(perms)));
+
+it.effect("denies access when user doesn't have required permission", () =>
+  Effect.gen(function* () {
+    const result = yield* Effect.succeed("allowed").pipe(
+      Policy.withPermission("comments:manage"),
+      Effect.exit
+    );
+
+    deepStrictEqual(Exit.isFailure(result), true);
+  }).pipe(provideCurrentUser(["comments:read"]))
+);
+```
+
+The great thing about this approach, thanks to Effect's composition, is that you can write all your logic upfront and then add permission guards where needed when piping through your computations. This separation of concerns makes your code easier to reason about - first you focus on business logic, then you layer in permission checks.
+
+! For optimal control flow, add these guards as early as possible in your pipeline to fail fast and avoid unnecessary computation.
+
+## ABAC: Attribute-Based Access Control
+
+Now that we've covered basic permission checking, let's tackle more complex scenarios with ABAC (Attribute-Based Access Control). ABAC shines when you need to make access decisions based on the relationship between the user and the resource - like "is this user the owner of this post?" or "is this user an admin of this forum?"
+
+Here's how we implement ABAC policies:
+
+```ts
+/**
+ * Represents an access policy that can be evaluated against the current user.
+ * A policy is a function that returns Effect.void if access is granted,
+ * or fails with a CustomHttpApiError.Forbidden if access is denied.
+ */
+type Policy<E, R> = Effect.Effect<void, CustomHttpApiError.Forbidden | E, CurrentUser | R>;
+
+/**
+ * Creates a policy from a predicate function that evaluates the current user.
+ */
+export const policy = <E, R>(
+  predicate: (user: CurrentUser["Type"]) => Effect.Effect<boolean, E, R>
+): Policy<E, R> =>
+  CurrentUser.pipe(
+    Effect.flatMap((user) =>
+      Effect.flatMap(predicate(user), (result) =>
+        result ? Effect.void : new CustomHttpApiError.Forbidden()
+      )
+    )
+  );
+```
+
+The core idea is to represent a policy as an Effect that either succeeds with `void` (access granted) or fails with `Forbidden` (access denied). The `policy` function creates this Effect from a predicate that takes the current user and returns a boolean Effect.
+
+This approach gives us amazing flexibility - the predicate can perform any check, including database lookups to verify relationships between users and resources.
+
+Just like with our permission guards, we can wrap Effects with policy checks:
+
+```ts
+/**
+ * Applies a predicate as a pre-check to an effect.
+ * If the predicate returns false, the effect will fail with Forbidden.
+ */
+export const withPolicy =
+  <E, R>(policy: Policy<E, R>) =>
+  <A, E2, R2>(self: Effect.Effect<A, E2, R2>) =>
+    Effect.zipRight(policy, self);
+```
+
+And we can compose policies with AND/OR semantics:
+
+```ts
+/**
+ * Combines multiple policies with AND semantics - all must pass.
+ */
+export const withPolicyAll =
+  <A, E, R>(policies: NonEmptyReadonlyArray<Policy<E, R>>) =>
+  (self: Effect.Effect<A, E, R>) =>
+    Effect.zipRight(
+      Effect.all(policies, {
+        concurrency: 1,
+        discard: true
+      }),
+      self
+    );
+
+/**
+ * Combines multiple policies with OR semantics - at least one must pass.
+ */
+export const withPolicyAny =
+  <A, E, R>(policies: NonEmptyReadonlyArray<Policy<E, R>>) =>
+  (self: Effect.Effect<A, E, R>) =>
+    Effect.zipRight(Effect.firstSuccessOf(policies), self);
+```
+
+Here's how you might use these in a test:
+
+```ts
+it.effect("denies access when policy predicate returns false", () =>
+  Effect.gen(function* () {
+    const result = yield* Effect.succeed("allowed").pipe(
+      Policy.withPolicy(Policy.policy(() => Effect.succeed(false))),
+      Effect.exit
+    );
+
+    deepStrictEqual(Exit.isFailure(result), true);
+  }).pipe(provideCurrentUser([]))
+);
+```
+
+For real-world usage, I recommend creating dedicated policy services for each entity type. For example, a `PostsPolicy` service might look like:
+
+```ts
+import { Database } from "@org/database";
+import * as Policy from "@org/domain/Policy";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+
+export class PostsRepo extends Effect.Service<PostsRepo>()("PostsRepo", {
+  effect: Effect.gen(function* () {
+    const db = yield* Database.Database;
+
+    const findFirst = db.makeQuery((execute, id: string) =>
+      execute((client) =>
+        client.query.postsTable.findFirst({
+          where: (columns, { eq }) => eq(columns.id, id)
+        })
+      ).pipe(Effect.flatMap(Option.fromNullable))
+    );
+
+    return {
+      findFirst
+    } as const;
+  })
+}) {}
+
+export class PostsPolicy extends Effect.Servicethe<PostsPolicy>()("PostsPolicy", {
+  dependencies: [PostsRepo.Default],
+  effect: Effect.gen(function* () {
+    const postsRepo = yield* PostsRepo;
+
+    const isOwner = (postId: string) =>
+      Policy.policy((user) =>
+        postsRepo.findFirst(postId).pipe(Effect.map((post) => post.authorId === user.userId))
+      );
+
+    return {
+      isOwner
+    } as const;
+  })
+}) {}
+```
+
+This approach lets you define domain-specific policies that encapsulate the access control logic for each entity type.
+
+At the controller level, you can then apply these policies:
+
+```ts
+Effect.gen(function* () {
+  const postsPolicy = yield* PostsPolicy;
+
+  const updatePost = Effect.promise(() => /* update post logic */).pipe(
+    Policy.withPolicy(postsPolicy.isOwner("post-123"))
+  );
+
+  return yield* updatePost;
+});
+```
+
+And with that, you've implemented ABAC in a type-safe, composable manner that integrates seamlessly with your application logic!
