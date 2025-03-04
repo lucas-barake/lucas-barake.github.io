@@ -25,7 +25,9 @@ type PermissionAction = "read" | "manage" | "delete";
 type PermissionConfig = Record<string, ReadonlyArray<PermissionAction>>;
 
 type InferPermissions<T extends PermissionConfig> = {
-  [K in keyof T]: T[K][number] extends PermissionAction ? `${K & string}:${T[K][number]}` : never;
+  [K in keyof T]: T[K][number] extends PermissionAction
+    ? `${K & string}:${T[K][number]}`
+    : never;
 }[keyof T];
 
 export const makePermissions = <T extends PermissionConfig>(
@@ -170,14 +172,18 @@ Building on this foundation, we can create more sophisticated permission checks:
  * Protects an effect by checking if the current user has any of the required permissions.
  * If the user doesn't have any of the permissions, fails with Forbidden error.
  */
-export const withPermissionAny = (requiredPermissions: NonEmptyReadonlyArray<Permission>) => {
+export const withPermissionAny = (
+  requiredPermissions: NonEmptyReadonlyArray<Permission>
+) => {
   return <A, E, R>(
     self: Effect.Effect<A, E, R>
   ): Effect.Effect<A, E | CustomHttpApiError.Forbidden, R | CurrentUser> =>
     Effect.zipRight(
       CurrentUser.pipe(
         Effect.flatMap((user) =>
-          requiredPermissions.some((permission) => user.permissions.has(permission))
+          requiredPermissions.some((permission) =>
+            user.permissions.has(permission)
+          )
             ? Effect.void
             : new CustomHttpApiError.Forbidden()
         )
@@ -190,14 +196,18 @@ export const withPermissionAny = (requiredPermissions: NonEmptyReadonlyArray<Per
  * Protects an effect by checking if the current user has all the required permissions.
  * If the user doesn't have all permissions, fails with Forbidden error.
  */
-export const withPermissionAll = (requiredPermissions: NonEmptyReadonlyArray<Permission>) => {
+export const withPermissionAll = (
+  requiredPermissions: NonEmptyReadonlyArray<Permission>
+) => {
   return <A, E, R>(
     self: Effect.Effect<A, E, R>
   ): Effect.Effect<A, E | CustomHttpApiError.Forbidden, R | CurrentUser> =>
     Effect.zipRight(
       CurrentUser.pipe(
         Effect.flatMap((user) =>
-          requiredPermissions.every((permission) => user.permissions.has(permission))
+          requiredPermissions.every((permission) =>
+            user.permissions.has(permission)
+          )
             ? Effect.void
             : new CustomHttpApiError.Forbidden()
         )
@@ -220,7 +230,9 @@ import * as Layer from "effect/Layer";
 import { UserId } from "../src/EntityIds.js";
 import * as Policy from "../src/Policy.js";
 
-const mockUser = (perms: Array<Policy.Permission>): Policy.CurrentUser["Type"] =>
+const mockUser = (
+  perms: Array<Policy.Permission>
+): Policy.CurrentUser["Type"] =>
   ({
     sessionId: "test-session",
     userId: UserId.make("test-user"),
@@ -259,8 +271,8 @@ Here's how we implement ABAC policies:
  * or fails with a CustomHttpApiError.Forbidden if access is denied.
  */
 type Policy<E, R> = Effect.Effect<
-  void, 
-  CustomHttpApiError.Forbidden | E, 
+  void,
+  CustomHttpApiError.Forbidden | E,
   CurrentUser | R
 >;
 
@@ -363,21 +375,26 @@ export class PostsRepo extends Effect.Service<PostsRepo>()("PostsRepo", {
   })
 }) {}
 
-export class PostsPolicy extends Effect.Servicethe<PostsPolicy>()("PostsPolicy", {
-  dependencies: [PostsRepo.Default],
-  effect: Effect.gen(function* () {
-    const postsRepo = yield* PostsRepo;
+export class PostsPolicy extends Effect.Servicethe<PostsPolicy>()(
+  "PostsPolicy",
+  {
+    dependencies: [PostsRepo.Default],
+    effect: Effect.gen(function* () {
+      const postsRepo = yield* PostsRepo;
 
-    const isOwner = (postId: string) =>
-      Policy.policy((user) =>
-        postsRepo.findFirst(postId).pipe(Effect.map((post) => post.authorId === user.userId))
-      );
+      const isOwner = (postId: string) =>
+        Policy.policy((user) =>
+          postsRepo
+            .findFirst(postId)
+            .pipe(Effect.map((post) => post.authorId === user.userId))
+        );
 
-    return {
-      isOwner
-    } as const;
-  })
-}) {}
+      return {
+        isOwner
+      } as const;
+    })
+  }
+) {}
 ```
 
 This approach lets you define domain-specific policies that encapsulate the access control logic for each entity type.
