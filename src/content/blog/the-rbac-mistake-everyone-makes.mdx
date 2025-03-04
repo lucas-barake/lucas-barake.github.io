@@ -61,11 +61,11 @@ export const Permission = Schema.Literal(...Permissions).annotations({
 export type Permission = typeof Permission.Type;
 ```
 
-Now we have a `Permission` type that's exactly the union of` "posts:read" | "posts:manage" | "posts:delete" | "comments:read" | "comments:manage"`. The compiler will scream at you if you try to check for `”comments:delete"` - that permission doesn't exist.
+Now we have a `Permission` type that's exactly the union of` "posts:read" | "posts:manage" | "posts:delete" | "comments:read" | "comments:manage"`. The compiler will scream at you if you try to check for `"comments:delete"` - that permission doesn't exist.
 
 ## Context: Making User Permissions Available
 
-Now that we have our permissions typed, we need a way to access them throughout our application. Since we’re using Effect, this is where its context system shines:
+Now that we have our permissions typed, we need a way to access them throughout our application. Since we're using Effect, this is where its context system shines:
 
 ```typescript
 import * as Context from "effect/Context";
@@ -159,7 +159,7 @@ export const withPermission = (requiredPermission: Permission) => {
 };
 ```
 
-Let's break this down. The `withPermission` function takes a required permission and returns a function that wraps any Effect to protect it. Inside, we use `Effect.zipRight` which runs two effects in sequence - first the permission check, then your original effect. However, it discards the output of the first effect (so the permission check in this case) and gives us the result of the original effect (`self`).
+Let's break this down. The `withPermission` function takes a required permission and returns a function that wraps any Effect to protect it. Inside, we use `Effect.zipRight` which runs two effects in sequence - first the permission check, then your original effect. It discards the output of the first effect (so the permission check in this case) and gives us the result of the original effect (`self`).
 
 The permission check grabs the `CurrentUser` from context, then checks if the user has the required permission in their permissions set. If they do, we proceed with a `void` effect. If not, we fail with a `Forbidden` error, which short-circuits execution and prevents your protected effect from running at all.
 
@@ -244,7 +244,7 @@ it.effect("denies access when user doesn't have required permission", () =>
 
 The great thing about this approach, thanks to Effect's composition, is that you can write all your logic upfront and then add permission guards where needed when piping through your computations. This separation of concerns makes your code easier to reason about - first you focus on business logic, then you layer in permission checks.
 
-! For optimal control flow, add these guards as early as possible in your pipeline to fail fast and avoid unnecessary computation.
+🚨 For optimal control flow, place these guards as the last step in your pipeline chain to ensure they're evaluated first in the actual execution flow, letting you fail fast before any expensive operations run.
 
 ## ABAC: Attribute-Based Access Control
 
@@ -258,7 +258,11 @@ Here's how we implement ABAC policies:
  * A policy is a function that returns Effect.void if access is granted,
  * or fails with a CustomHttpApiError.Forbidden if access is denied.
  */
-type Policy<E, R> = Effect.Effect<void, CustomHttpApiError.Forbidden | E, CurrentUser | R>;
+type Policy<E, R> = Effect.Effect<
+  void, 
+  CustomHttpApiError.Forbidden | E, 
+  CurrentUser | R
+>;
 
 /**
  * Creates a policy from a predicate function that evaluates the current user.
@@ -393,3 +397,23 @@ Effect.gen(function* () {
 ```
 
 And with that, you've implemented ABAC in a type-safe, composable manner that integrates seamlessly with your application logic!
+
+## Conclusion
+
+We've covered a lot of ground in this post, from the fundamental mistake of checking roles directly to building a robust, type-safe permission system with Effect. Let's recap the key takeaways:
+
+1. **Roles are for humans, permissions are for code** - Roles are just convenient groupings of permissions that make management easier for humans. Your code should always check for specific permissions, not roles.
+
+2. **Type safety is your friend** - By creating a strongly-typed permission system, we catch permission errors at compile time rather than runtime. No more typos in permission strings or checking for permissions that don't exist.
+
+3. **Composition is powerful** - Effect's functional approach lets us compose permission checks and policies in a clean, declarative way. We can combine policies with AND/OR logic and apply them to any Effect in our application.
+
+4. **ABAC extends your capabilities** - When simple permission checks aren't enough, attribute-based policies give you the flexibility to make access decisions based on the relationship between users and resources.
+
+The approach outlined in this post scales well with application complexity. As your authorization requirements grow, you can add new permissions and policies without changing your existing code structure.
+
+For a complete implementation of everything we've discussed, [check out the full code in my Effect sandbox repository](https://github.com/lucas-barake/effect-sandbox/blob/main/src/domain/Policy.ts).
+
+Remember, the goal isn't just to implement authorization, but to do it in a way that's maintainable, type-safe, and aligned with your business rules. By focusing on permissions rather than roles, and leveraging Effect's powerful abstractions, you can build an authorization system that grows with your application and keeps your code clean and maintainable.
+
+Happy coding!
