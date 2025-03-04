@@ -6,19 +6,19 @@ description: "One of the main challenges I've faced when using TanStack is achie
 
 I've seen a lot of apps tie authorization logic directly to roles. Like, `if user.role == 'admin'`, grant access.
 
-But the problem is: roles are just labels. RBAC—Role-Based Access Control—is about grouping permissions into roles like 'Admin' or 'Moderator'. But roles themselves aren't actionable. They're just... buckets.
+But here's the problem: roles are just labels. RBAC (Role-Based Access Control) is about grouping permissions into roles like 'Admin' or 'Moderator'. However, roles themselves aren't actionable—they're simply buckets of permissions.
 
-So... why do we use them? Because we, humans, suck at managing 50 individual permissions; roles simplify things for us. But in code, checking for a role is the worst thing you could do - if you hardcode role checks, you're stuck maintaining a mess of `if/else` statements every time roles change.
+So why do we use roles at all? Because humans aren't great at managing dozens of individual permissions. Roles simplify permission management for us. But in code, directly checking roles is problematic. If you hardcode role checks, you'll soon find yourself maintaining a tangled mess of conditional statements every time roles evolve.
 
-That's where ACLs—Access Control Lists—come into play. An ACL is just a list of specific permissions attached to a user. Instead of asking 'Is this person an Admin?', you ask 'Do they have the `user:delete` permission?'
+That's where ACLs (Access Control Lists) come into play. An ACL is essentially a list of specific permissions assigned directly to a user. Instead of asking, "Is this user an Admin?", you ask, "Does this user have the `user:delete` permission?"
 
-My tip is to look at roles as the UI layer—how humans organize permissions—and permissions as the source of truth your code actually enforces.
+Think of roles as a UI layer—how humans organize and manage permissions—while permissions themselves are the actual source of truth your code enforces.
 
 ## Typing Permissions
 
-So, what's the solution? First, we need a strongly-typed foundation for our permissions. Instead of loose string checks, we'll create a type-safe permission system.
+So, what's the better approach? First, we need a strongly-typed foundation for our permissions. Instead of loose string checks scattered throughout our codebase, we'll create a type-safe permission system.
 
-Here's the first piece of the puzzle - a TypeScript utility that generates our permissions:
+Here's the first piece of the puzzle—a TypeScript utility to generate our permissions:
 
 ```typescript
 type PermissionAction = "read" | "manage" | "delete";
@@ -39,9 +39,9 @@ export const makePermissions = <T extends PermissionConfig>(
 };
 ```
 
-What's happening here? We're creating a type-safe way to generate permission strings with a consistent format: `domain:action`. The magic is in the `InferPermissions` type, which creates a union of all possible combinations based on our config.
+What's happening here? We're creating a type-safe way to generate permission strings in a consistent format: `domain:action`. The magic lies in the `InferPermissions` type, which generates a union of all possible permission combinations based on our configuration.
 
-Now, instead of random string literals scattered throughout our code, we can define our app's permissions in one place:
+Now, instead of random string literals scattered throughout our code, we define our application's permissions clearly in one place:
 
 ```ts
 import * as internal from "./internal/policy.js";
@@ -52,9 +52,9 @@ const Permissions = internal.makePermissions({
 } as const);
 ```
 
-See what we did? We've explicitly stated that users can read, manage, and delete posts, but they can only read and manage comments - deletion isn't supported. Our type system now reflects our business rules.
+Notice how we've explicitly defined that users can read, manage, and delete posts, but only read and manage comments—deletion isn't supported. Our type system now accurately reflects our business rules.
 
-This becomes our source of truth. We can use it to create a Schema:
+This becomes our single source of truth. We can even use it to create a Schema:
 
 ```ts
 export const Permission = Schema.Literal(...Permissions).annotations({
@@ -63,11 +63,11 @@ export const Permission = Schema.Literal(...Permissions).annotations({
 export type Permission = typeof Permission.Type;
 ```
 
-Now we have a `Permission` type that's exactly the union of` "posts:read" | "posts:manage" | "posts:delete" | "comments:read" | "comments:manage"`. The compiler will scream at you if you try to check for `"comments:delete"` - that permission doesn't exist.
+Now we have a `Permission` type that's exactly the union of `"posts:read" | "posts:manage" | "posts:delete" | "comments:read" | "comments:manage"`. The compiler will immediately alert you if you attempt to check for `"comments:delete"`—a permission that doesn't exist.
 
 ## Context: Making User Permissions Available
 
-Now that we have our permissions typed, we need a way to access them throughout our application. Since we're using Effect, this is where its context system shines:
+With our permissions strongly typed, we need a way to access them throughout our application. Since we're using Effect, its context system is perfect for this:
 
 ```typescript
 import * as Context from "effect/Context";
