@@ -6,7 +6,7 @@ description: "Discover why role-based authorization fails to scale and how to bu
 
 We've all been there. That moment when you open a codebase and see authorization checks like `if user.role === 'admin'` scattered everywhere. It seems innocent at first, but this common pattern contains a hidden time bomb waiting to explode.
 
-**Roles are just labels** - they're human-friendly groupings that help us organize permissions. The real security gates should be those individual permissions themselves. Think of it like job titles vs actual responsibilities - being a "Manager" doesn't automatically grant access to the corporate credit card, but having the "expense_approval" permission does.
+**Roles are just labels** - they're human-friendly groupings that help us organize permissions. The real security gates should be those individual permissions themselves. It's similar to job titles versus actual responsibilities - a "Manager" title doesn't automatically grant access to the corporate credit card, but having the specific "expense_approval" permission does.
 
 The core issue with role-based checks is that they conflate two separate concerns:
 
@@ -355,13 +355,13 @@ What makes this approach particularly powerful is Effect's composability. We can
 
 > 💡 **Pro tip**: For optimal performance AND security, place these guards as the last step in your pipeline chain. Due to Effect's execution model, this positions them first in the actual evaluation order, allowing you to fail fast before running expensive or sensitive operations.
 
-## Beyond Permissions: Attribute-Based Access Control
+## Extending with Attribute-Based Access Control
 
-While permission-based policies are powerful, they don't cover all authorization scenarios. Sometimes we need to make access decisions based on the relationship between the user and the resource - like "is this user the owner of this post?" or "is this user an admin of this forum?"
+Permission-based policies are great, but they don't cover all authorization scenarios. Sometimes we need to make access decisions based on the relationship between the user and the resource - like "is this user the owner of this post?" or "is this user an admin of this forum?"
 
-This is where Attribute-Based Access Control (ABAC) comes in. Our policy system is already designed to handle these complex scenarios.
+This is where Attribute-Based Access Control (ABAC) comes into play. Our policy system is already equipped to handle these complex scenarios.
 
-Let's see how we can create attribute-based policies using our existing primitives:
+Here's how we can create attribute-based policies using our existing primitives:
 
 ```typescript
 import { Database } from "@org/database";
@@ -422,7 +422,7 @@ What's powerful here is how we can compose attribute-based policies with permiss
 1. The user has the `posts:manage` permission (they're an admin)
 2. They are the owner of the post
 
-This kind of complex authorization rule would be cumbersome to implement with traditional if-statements, but with our policy system, it's just a simple type-safe composition.
+This kind of complex authorization rule would be a mess to implement with traditional if-statements, but with our policy system, it's just a simple type-safe composition.
 
 At the controller level, we can then apply these policies with minimal fuss:
 
@@ -450,7 +450,7 @@ We've covered a lot of ground in this post, from the fundamental mistake of chec
 
 3. **Composition is powerful** - Effect's functional approach lets us compose policies in a clean, declarative way. We can combine policies with AND/OR logic and apply them to any Effect in our application.
 
-4. **ABAC extends your capabilities** - When simple permission checks aren't enough, attribute-based policies give you the flexibility to make access decisions based on the relationship between users and resources.
+4. **ABAC enhances flexibility** - When simple permission checks aren't enough, attribute-based policies give you the flexibility to make access decisions based on the relationship between users and resources.
 
 5. **Separation of concerns** - By treating policies as first-class citizens, we can separate authorization logic from business logic, making our code more maintainable and easier to reason about.
 
