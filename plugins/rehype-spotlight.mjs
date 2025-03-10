@@ -26,13 +26,19 @@ export function rehypeSpotlight() {
               lastSpan.shouldRemove = true;
               const lastSpanIndex = codeEl.children.indexOf(lastSpan);
               const prevNode = codeEl.children[lastSpanIndex - 1];
-              if (prevNode && prevNode.type === "text" && prevNode.value === "\n") {
+              if (
+                prevNode &&
+                prevNode.type === "text" &&
+                prevNode.value === "\n"
+              ) {
                 prevNode.shouldRemove = true;
               }
             }
           }
 
-          codeEl.children = codeEl.children.filter((child) => !child.shouldRemove);
+          codeEl.children = codeEl.children.filter(
+            (child) => !child.shouldRemove
+          );
 
           const hasSpotlights = lineSpans.some((span) => {
             const hasMarker = (node) => {
@@ -61,10 +67,18 @@ export function rehypeSpotlight() {
               };
               const text = getText(span);
 
-              if (text.trim() === "// spotlight-start" || text.trim() === "// spotlight-end") {
+              if (
+                text.trim() === "// spotlight-start" ||
+                text.trim() === "// spotlight-end"
+              ) {
                 span.shouldRemove = true;
-                const nextNode = codeEl.children[codeEl.children.indexOf(span) + 1];
-                if (nextNode && nextNode.type === "text" && nextNode.value === "\n") {
+                const nextNode =
+                  codeEl.children[codeEl.children.indexOf(span) + 1];
+                if (
+                  nextNode &&
+                  nextNode.type === "text" &&
+                  nextNode.value === "\n"
+                ) {
                   nextNode.shouldRemove = true;
                 }
 
@@ -77,7 +91,10 @@ export function rehypeSpotlight() {
                 isSpotlighting = true;
                 const transformNode = (node) => {
                   if (node.value) {
-                    node.value = node.value.replace(/\/\/ spotlight-start\s*/, "");
+                    node.value = node.value.replace(
+                      /\/\/ spotlight-start\s*/,
+                      ""
+                    );
                   }
                   if (node.children) {
                     node.children.forEach(transformNode);
@@ -88,7 +105,10 @@ export function rehypeSpotlight() {
                 isSpotlighting = false;
                 const transformNode = (node) => {
                   if (node.value) {
-                    node.value = node.value.replace(/\/\/ spotlight-end\s*/, "");
+                    node.value = node.value.replace(
+                      /\/\/ spotlight-end\s*/,
+                      ""
+                    );
                   }
                   if (node.children) {
                     node.children.forEach(transformNode);
@@ -96,16 +116,24 @@ export function rehypeSpotlight() {
                 };
                 transformNode(span);
               } else if (isSpotlighting) {
-                span.properties.className = [...span.properties.className, "spotlight"];
+                span.properties.className = [
+                  ...span.properties.className,
+                  "spotlight"
+                ];
                 if (text.trim() === "") {
                   span.children = [{ type: "text", value: "\u00A0" }];
                 }
               } else {
-                span.properties.className = [...span.properties.className, "dim"];
+                span.properties.className = [
+                  ...span.properties.className,
+                  "dim"
+                ];
               }
             });
 
-            codeEl.children = codeEl.children.filter((child) => !child.shouldRemove);
+            codeEl.children = codeEl.children.filter(
+              (child) => !child.shouldRemove
+            );
           }
         }
       }

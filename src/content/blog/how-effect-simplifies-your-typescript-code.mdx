@@ -93,7 +93,9 @@ class RefreshResult extends Schema.Class<RefreshResult>("RefreshResult")({
 }
 
 const program = Effect.gen(function* () {
-  const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.filterStatusOk);
+  const httpClient = (yield* HttpClient.HttpClient).pipe(
+    HttpClient.filterStatusOk
+  );
 
   const accessTokensRef = yield* Ref.make(
     AuthTokens.make({
@@ -188,7 +190,9 @@ const program = Effect.gen(function* () {
   // ...
 
   // spotlight-start
-  const timeSinceLastRefresh = yield* Ref.make<Option.Option<DateTime.DateTime>>(Option.none());
+  const timeSinceLastRefresh = yield* Ref.make<
+    Option.Option<DateTime.DateTime>
+  >(Option.none());
   // spotlight-end
 
   const refresh = Effect.gen(function* () {
@@ -227,7 +231,11 @@ const program = Effect.gen(function* () {
 Now, with this, our `refresh` computation has the following type signature:
 
 ```ts
-const refresh: Effect.Effect<never, ParseError | ForceRetryError | HttpClientError, Scope>;
+const refresh: Effect.Effect<
+  never,
+  ParseError | ForceRetryError | HttpClientError,
+  Scope
+>;
 ```
 
 This tells us our computation can fail with three types of errors:
@@ -270,7 +278,8 @@ const program = Effect.gen(function* () {
   }).pipe(
     // spotlight-start
     Effect.catchIf(
-      (error) => error._tag === "ResponseError" && error.response.status === 401,
+      (error) =>
+        error._tag === "ResponseError" && error.response.status === 401,
       () => Effect.dieMessage("Definitely not authenticated")
     ),
     Effect.timeout("5 seconds"),
@@ -279,7 +288,9 @@ const program = Effect.gen(function* () {
       schedule: Schedule.exponential("1.5 seconds", 1.5),
       while: (error) => error._tag !== "ForceRetryError"
     }),
-    Effect.catchAll((error) => (error._tag !== "ForceRetryError" ? Effect.die(error) : error)),
+    Effect.catchAll((error) =>
+      error._tag !== "ForceRetryError" ? Effect.die(error) : error
+    ),
     // spotlight-end
     semaphore.withPermits(1)
   );
@@ -385,7 +396,9 @@ Now, for dependency injection, we'll use `Effect.Service` to create our injectab
 ```ts
 class Session extends Effect.Service<Session>()("Session", {
   effect: Effect.gen(function* () {
-    const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.filterStatusOk);
+    const httpClient = (yield* HttpClient.HttpClient).pipe(
+      HttpClient.filterStatusOk
+    );
 
     const accessTokensRef = yield* Ref.make(
       AuthTokens.make({
@@ -398,7 +411,9 @@ class Session extends Effect.Service<Session>()("Session", {
 
     const semaphore = yield* Effect.makeSemaphore(1);
 
-    const timeSinceLastRefresh = yield* Ref.make<Option.Option<DateTime.DateTime>>(Option.none());
+    const timeSinceLastRefresh = yield* Ref.make<
+      Option.Option<DateTime.DateTime>
+    >(Option.none());
 
     const refreshSession = Effect.gen(function* () {
       // ...
@@ -417,37 +432,42 @@ class Session extends Effect.Service<Session>()("Session", {
   dependencies: [FetchHttpClient.layer]
 }) {}
 
-class CustomHttpClient extends Effect.Service<CustomHttpClient>()("CustomHttpClient", {
-  effect: Effect.gen(function* () {
-    const session = yield* Session;
+class CustomHttpClient extends Effect.Service<CustomHttpClient>()(
+  "CustomHttpClient",
+  {
+    effect: Effect.gen(function* () {
+      const session = yield* Session;
 
-    return (yield* HttpClient.HttpClient).pipe(
-      HttpClient.filterStatusOk,
-      HttpClient.mapRequestEffect((request) =>
-        Effect.gen(function* () {
-          const tokens = yield* session.getTokens;
+      return (yield* HttpClient.HttpClient).pipe(
+        HttpClient.filterStatusOk,
+        HttpClient.mapRequestEffect((request) =>
+          Effect.gen(function* () {
+            const tokens = yield* session.getTokens;
 
-          return request.pipe(
-            HttpClientRequest.bearerToken(tokens.accessToken),
-            HttpClientRequest.prependUrl("https://...")
-          );
+            return request.pipe(
+              HttpClientRequest.bearerToken(tokens.accessToken),
+              HttpClientRequest.prependUrl("https://...")
+            );
+          })
+        ),
+        HttpClient.catchTags({
+          ResponseError: (error) =>
+            error.response.status === 401
+              ? session.refreshSession
+              : Effect.fail(error)
+        }),
+        HttpClient.retry({
+          times: 1,
+          while: (error) => error._tag === "ForceRetryError"
+        }),
+        HttpClient.catchTags({
+          ForceRetryError: Effect.die
         })
-      ),
-      HttpClient.catchTags({
-        ResponseError: (error) =>
-          error.response.status === 401 ? session.refreshSession : Effect.fail(error)
-      }),
-      HttpClient.retry({
-        times: 1,
-        while: (error) => error._tag === "ForceRetryError"
-      }),
-      HttpClient.catchTags({
-        ForceRetryError: Effect.die
-      })
-    );
-  }),
-  dependencies: [FetchHttpClient.layer, Session.Default]
-}) {}
+      );
+    }),
+    dependencies: [FetchHttpClient.layer, Session.Default]
+  }
+) {}
 ```
 
 Notice our retry strategy here: we only retry once on `ForceRetryError`. Why? Because this error only occurs after a successful refresh, telling us to retry our original operation with the new token. If we get this error again after retrying (which would exhaust our single retry attempt), something has gone seriously wrong - either our refresh mechanism is broken, or we're stuck in some kind of loop. In such cases, we convert the `ForceRetryError` into a defect using `Effect.die`, as this represents a situation that shouldn't occur in a properly functioning system. In practice, you would typically model this as a 500 error on your server, or if you're on the client-side, you'd likely log out the user since they're definitely not authenticated anymore, discarding any lingering defects.
@@ -461,7 +481,11 @@ const program = Effect.gen(function* () {
   return yield* httpClient.get("...");
 });
 
-program.pipe(Effect.provide(CustomHttpClient.Default), Effect.scoped, Effect.runPromise);
+program.pipe(
+  Effect.provide(CustomHttpClient.Default),
+  Effect.scoped,
+  Effect.runPromise
+);
 ```
 
 All in around 100 lines of code!

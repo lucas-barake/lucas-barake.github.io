@@ -10,5 +10,9 @@ import tailwind from "@astrojs/tailwind";
 // https://astro.build/config
 export default defineConfig({
   site: "https://lucas-barake.github.io",
-  integrations: [mdx({ rehypePlugins: [rehypeSpotlight] }), sitemap(), tailwind()]
+  integrations: [
+    mdx({ rehypePlugins: [rehypeSpotlight] }),
+    sitemap(),
+    tailwind()
+  ]
 });

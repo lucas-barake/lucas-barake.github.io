@@ -116,7 +116,9 @@ const getTodos = async () => {
 };
 
 const saveTodos = (todos: ParsedTodo[]) => {
-  const encoded = Schema.encodeSync(Schema.parseJson(Schema.Array(Todo)))(todos);
+  const encoded = Schema.encodeSync(Schema.parseJson(Schema.Array(Todo)))(
+    todos
+  );
   localStorage.setItem("todos", encoded);
 };
 ```
@@ -233,49 +235,66 @@ export class IndexedDB extends Effect.Service<IndexedDB>()("IndexedDB", {
 Next, I'll create a `QueryPersister` to manage the invalidation logic:
 
 ```ts
-export class QueryPersister extends Effect.Service<QueryPersister>()("QueryPersister", {
-  effect: Effect.gen(function* () {
-    const indexedDB = yield* IndexedDB;
+export class QueryPersister extends Effect.Service<QueryPersister>()(
+  "QueryPersister",
+  {
+    effect: Effect.gen(function* () {
+      const indexedDB = yield* IndexedDB;
 
-    class StoredData extends Schema.Class<StoredData>("StoredData")({
-      modifiedAt: Schema.DateTimeUtc.pipe(
-        Schema.filter(
-          DateTime.greaterThanOrEqualTo(DateTime.subtract(DateTime.unsafeNow(), { days: 7 }))
-        )
-      ),
-      data: Schema.Unknown
-    }) {
-      static decodeUnknownOptionFromSelf = Schema.decodeUnknown(
-        Schema.OptionFromSelf(this.pipe(Schema.pluck("data")))
-      );
-      static encode = Schema.encode(this);
-    }
-
-    const remove = (key: string) =>
-      indexedDB.remove(key).pipe(Effect.ignore, Effect.withSpan("QueryPersister.remove"));
-
-    return {
-      get: <Result, Input>(key: string, schema: Schema.Schema<Result, Input>) =>
-        indexedDB.get(key).pipe(
-          Effect.flatMap(StoredData.decodeUnknownOptionFromSelf),
-          Effect.flatMap(Schema.decodeUnknown(Schema.OptionFromSelf(schema))),
-          Effect.orElse(() => Effect.zipRight(remove(key), Effect.succeed(Option.none<Result>()))),
-          Effect.withSpan("QueryPersister.get")
+      class StoredData extends Schema.Class<StoredData>("StoredData")({
+        modifiedAt: Schema.DateTimeUtc.pipe(
+          Schema.filter(
+            DateTime.greaterThanOrEqualTo(
+              DateTime.subtract(DateTime.unsafeNow(), { days: 7 })
+            )
+          )
         ),
-      store: (key: string, value: unknown) =>
-        Effect.gen(function* () {
-          const encoded = yield* StoredData.encode({
-            data: value,
-            modifiedAt: DateTime.unsafeNow()
-          });
-          yield* indexedDB.set(key, encoded);
-        }).pipe(Effect.ignore, Effect.withSpan("QueryPersister.store")),
-      remove: (key: string) =>
-        indexedDB.remove(key).pipe(Effect.ignore, Effect.withSpan("QueryPersister.remove"))
-    } as const;
-  }),
-  dependencies: [IndexedDB.Default]
-}) {}
+        data: Schema.Unknown
+      }) {
+        static decodeUnknownOptionFromSelf = Schema.decodeUnknown(
+          Schema.OptionFromSelf(this.pipe(Schema.pluck("data")))
+        );
+        static encode = Schema.encode(this);
+      }
+
+      const remove = (key: string) =>
+        indexedDB
+          .remove(key)
+          .pipe(Effect.ignore, Effect.withSpan("QueryPersister.remove"));
+
+      return {
+        get: <Result, Input>(
+          key: string,
+          schema: Schema.Schema<Result, Input>
+        ) =>
+          indexedDB.get(key).pipe(
+            Effect.flatMap(StoredData.decodeUnknownOptionFromSelf),
+            Effect.flatMap(Schema.decodeUnknown(Schema.OptionFromSelf(schema))),
+            Effect.orElse(() =>
+              Effect.zipRight(
+                remove(key),
+                Effect.succeed(Option.none<Result>())
+              )
+            ),
+            Effect.withSpan("QueryPersister.get")
+          ),
+        store: (key: string, value: unknown) =>
+          Effect.gen(function* () {
+            const encoded = yield* StoredData.encode({
+              data: value,
+              modifiedAt: DateTime.unsafeNow()
+            });
+            yield* indexedDB.set(key, encoded);
+          }).pipe(Effect.ignore, Effect.withSpan("QueryPersister.store")),
+        remove: (key: string) =>
+          indexedDB
+            .remove(key)
+            .pipe(Effect.ignore, Effect.withSpan("QueryPersister.remove"))
+      } as const;
+    }),
+    dependencies: [IndexedDB.Default]
+  }
+) {}
 ```
 
 Notice how we declare a `modifiedAt` property with a `Schema.filter`. This enables automatic invalidation of stale data that exceeds a specified age threshold - whether that's days, weeks, or months. In this case, we're invalidating any data older than 7 days.
@@ -315,7 +334,10 @@ class MyHttpClient extends Effect.Service<MyHttpClient>()("MyHttpClient", {
       Effect.gen(function* () {
         const stringifiedQueryKey = JSON.stringify(queryKey);
 
-        const cachedData = yield* queryPersister.get(stringifiedQueryKey, schema);
+        const cachedData = yield* queryPersister.get(
+          stringifiedQueryKey,
+          schema
+        );
 
         const persistedRequest = client.execute(request).pipe(
           Effect.flatMap(HttpClientResponse.schemaBodyJson(schema)),
@@ -324,7 +346,9 @@ class MyHttpClient extends Effect.Service<MyHttpClient>()("MyHttpClient", {
               pipe(
                 data,
                 Schema.encode(schema),
-                Effect.flatMap((encoded) => queryPersister.store(stringifiedQueryKey, encoded))
+                Effect.flatMap((encoded) =>
+                  queryPersister.store(stringifiedQueryKey, encoded)
+                )
               ),
               Effect.sync(() => queryClient.setQueryData(queryKey, data))
             )
@@ -333,7 +357,10 @@ class MyHttpClient extends Effect.Service<MyHttpClient>()("MyHttpClient", {
 
         return yield* Option.match(cachedData, {
           onSome: (data) =>
-            Effect.zipRight(Effect.forkDaemon(persistedRequest), Effect.succeed(data)),
+            Effect.zipRight(
+              Effect.forkDaemon(persistedRequest),
+              Effect.succeed(data)
+            ),
           onNone: () => persistedRequest
         });
       }).pipe(Effect.withSpan("MyHttpClient.makeCachedRequest"));
@@ -422,7 +449,9 @@ export namespace TodosQuery {
   // spotlight-start
   export const remove = () =>
     QueryPersister.remove(JSON.stringify(makeQueryKey())).pipe(
-      Effect.andThen(() => queryClient.removeQueries({ queryKey: makeQueryKey() }))
+      Effect.andThen(() =>
+        queryClient.removeQueries({ queryKey: makeQueryKey() })
+      )
     );
   // spotlight-end
 }
@@ -471,17 +500,24 @@ export namespace TodosQuery {
 
   export const remove = () =>
     QueryPersister.remove(JSON.stringify(makeQueryKey())).pipe(
-      Effect.andThen(() => queryClient.removeQueries({ queryKey: makeQueryKey() }))
+      Effect.andThen(() =>
+        queryClient.removeQueries({ queryKey: makeQueryKey() })
+      )
     );
   // spotlight-start
-  export const set = (updater: (updater: Result | undefined) => Result | undefined) =>
+  export const set = (
+    updater: (updater: Result | undefined) => Result | undefined
+  ) =>
     Effect.gen(function* () {
       const data = queryClient.setQueryData<Result>(makeQueryKey(), updater);
 
       const stringifiedQueryKey = JSON.stringify(makeQueryKey());
 
       if (data !== undefined) {
-        yield* QueryPersister.store(stringifiedQueryKey, yield* Schema.encode(Result)(data));
+        yield* QueryPersister.store(
+          stringifiedQueryKey,
+          yield* Schema.encode(Result)(data)
+        );
       } else {
         yield* QueryPersister.remove(stringifiedQueryKey);
       }
@@ -533,7 +569,8 @@ export namespace CreateTask {
           });
         }).pipe(
           Effect.catchIf(
-            (error) => error._tag === "RequestError" && error.reason === "Transport",
+            (error) =>
+              error._tag === "RequestError" && error.reason === "Transport",
             () =>
               Effect.gen(function* () {
                 const key = JSON.stringify(makeMutationKey());

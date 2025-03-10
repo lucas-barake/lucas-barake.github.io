@@ -10,7 +10,12 @@ const { title, description, date, image } = Astro.props;
 import BaseLayout from "../../layouts/BaseLayout.astro";
 ---
 
-<BaseLayout title={title} description={description} image={image} article={true}>
+<BaseLayout
+  title={title}
+  description={description}
+  image={image}
+  article={true}
+>
   <script
     type="application/ld+json"
     set:html={JSON.stringify({
@@ -62,7 +67,9 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
 
 <script>
   function handleStickyHeaders() {
-    const headings = document.querySelectorAll(".prose h2, .prose h3, .prose h4");
+    const headings = document.querySelectorAll(
+      ".prose h2, .prose h3, .prose h4"
+    );
     let currentStickyHeading: Element | null = null;
     let lastScrollY = window.scrollY;
 
@@ -107,7 +114,9 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
   }
 
   function handleTableOfContents() {
-    const headings = Array.from(document.querySelectorAll(".prose h2, .prose h3, .prose h4"));
+    const headings = Array.from(
+      document.querySelectorAll(".prose h2, .prose h3, .prose h4")
+    );
     const tocList = document.getElementById("toc");
 
     if (!tocList) return;
@@ -116,7 +125,8 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
       const link = document.createElement("a");
       link.href = `#${heading.id || ""}`;
       link.textContent = `${index + 1}. ${heading.textContent}`;
-      link.className = "block transition-colors duration-200 hover:text-neutral-200";
+      link.className =
+        "block transition-colors duration-200 hover:text-neutral-200";
 
       const listItem = document.createElement("li");
       listItem.appendChild(link);
@@ -282,7 +292,10 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
   /* Enhanced link underlines */
   .prose a {
     text-decoration: none;
-    background-image: linear-gradient(transparent 60%, rgb(59, 130, 246, 0.2) 40%);
+    background-image: linear-gradient(
+      transparent 60%,
+      rgb(59, 130, 246, 0.2) 40%
+    );
     background-position: 0 100%;
     background-repeat: repeat-x;
     background-size: 100% 100%;
@@ -290,7 +303,10 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
   }
 
   .prose a:hover {
-    background-image: linear-gradient(transparent 0%, rgb(59, 130, 246, 0.2) 100%);
+    background-image: linear-gradient(
+      transparent 0%,
+      rgb(59, 130, 246, 0.2) 100%
+    );
   }
 
   /* Better blockquotes */

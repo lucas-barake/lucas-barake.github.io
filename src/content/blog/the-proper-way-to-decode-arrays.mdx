@@ -43,7 +43,14 @@ Instead of throwing away perfectly good data, let's build something more gracefu
 Here's how we can create a graceful array helper:
 
 ```ts
-import { Array, Schema, Either, identity, Predicate, ParseResult } from "effect";
+import {
+  Array,
+  Schema,
+  Either,
+  identity,
+  Predicate,
+  ParseResult
+} from "effect";
 
 const ArrayFromFallible = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
   Schema.Array(
@@ -138,7 +145,10 @@ For these cases, we can create a partition decoder:
 import { ParseResult, Schema, Either } from "effect";
 import { type ParseOptions } from "effect/SchemaAST";
 
-const decodeUnknownPartition = <A, I>(schema: Schema.Schema<A, I>, options?: ParseOptions) => {
+const decodeUnknownPartition = <A, I>(
+  schema: Schema.Schema<A, I>,
+  options?: ParseOptions
+) => {
   const decoder = Schema.decodeUnknownEither(schema, options);
 
   return (self: readonly unknown[]): [ParseResult.ParseError[], A[]] =>
