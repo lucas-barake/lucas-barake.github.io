@@ -385,7 +385,8 @@ Adding spans is beautifully simple in Effect. We just use `Effect.withSpan("..."
 ```ts
 const refresh = Effect.gen(function* () {}).pipe(
   // ...
-  Effect.withSpan("refresh") // <- Effect automatically establishes a parent-child relationship - just nest withSpans!
+  Effect.withSpan("refresh") // <- Effect automatically establishes a parent-child relationship
+  // so, just nest withSpans!
 );
 ```
 
@@ -468,7 +469,8 @@ class CustomHttpClient extends Effect.Service<CustomHttpClient>()(
               ? session.refreshSession
               : Effect.fail(error)
         }),
-        // HttpClient also comes with HttpClient.retryTransient, which retries on transient errors (RequestErrors) exponentially
+        // HttpClient also comes with HttpClient.retryTransient,
+        // which retries on transient errors (RequestErrors) exponentially
         HttpClient.retry({
           times: 1,
           while: (error) => error._tag === "ForceRetryError"
