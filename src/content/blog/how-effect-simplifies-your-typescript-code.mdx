@@ -522,7 +522,17 @@ const OtherImpl = Layer.effect(
 
 Also, you might've noticed the `Effect.scoped`. Effect has a `Scope` type, which basically allows you to add finalizers to your code (that run backwards, so FILO, first in, last out). Effect guarantees that all finalizers are executed, and `Effect.scoped` dictates WHEN the finalizers should be executed. You can have it at the top level of all of your computations, or locally defined, it all depends on what you need to achieve. Making a request requires the use of `Scope`, to run a finalizer once a response has been received. This allows you to cleanup resources in a type-safe and robust manner.
 
-That's what makes Effect so powerful - the `R` type parameter isn't just for services, but for any contextual dependencies. For example, you could define a Tag for an HTTP request, allowing your endpoints to access the incoming request without passing it through every function call. You could even use the `R` channel to implement permission policies, where certain computations explicitly require specific permissions in their type signature. This way, consumers know exactly what they need to provide, and you can enforce these requirements at runtime with policy guards while maintaining clean type signatures. These are more advanced patterns that we can explore another time, but they showcase how Effect's design enables sophisticated dependency management without sacrificing type safety or code clarity.
+That's what makes Effect so powerful - the `R` type parameter isn't just for services, but for any contextual dependencies:
+
+- **Request Context**: You could define a Tag for an HTTP request, allowing your endpoints to access the incoming request without passing it through every function call
+
+- **Permission Policies**: Use the `R` channel to implement permission requirements, where computations explicitly require specific permissions in their type signature
+
+- **Environmental Configuration**: Store environment-specific settings that can be accessed anywhere without global variables
+
+- **Feature Flags**: Toggle features on/off by providing different implementations based on context
+
+These are more advanced patterns that we can explore another time, but they showcase how Effect's design enables sophisticated dependency management without sacrificing type safety or code clarity.
 
 ## Conclusion
 
