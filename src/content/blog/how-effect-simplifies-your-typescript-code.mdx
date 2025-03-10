@@ -385,7 +385,7 @@ Adding spans is beautifully simple in Effect. We just use `Effect.withSpan("..."
 ```ts
 const refresh = Effect.gen(function* () {}).pipe(
   // ...
-  Effect.withSpan("refresh")
+  Effect.withSpan("refresh") // <- Effect automatically establishes a parent-child relationship - just nest withSpans!
 );
 ```
 
@@ -394,7 +394,15 @@ And since `HttpClient` already adds spans for requests internally, that's all we
 Now, for dependency injection, we'll use `Effect.Service` to create our injectable services:
 
 ```ts
+// The Service class creates a unique identifier (tag: "Session") that Effect uses as a key
+// in its internal registry to locate this service. This tag must be unique.
 class Session extends Effect.Service<Session>()("Session", {
+  // Specifies the Layer dependencies required to construct this service
+  dependencies: [FetchHttpClient.layer],
+
+  // Creates a Layer<Session, #E, #R> - a blueprint for constructing the Session service
+  // Layer<A, E, R> represents a recipe to build service A, possibly failing with error E, requiring dependencies R
+  // It's basically an Effect.Effect<A, E, R> for constructors - you can retry layers, merge them, and more.
   effect: Effect.gen(function* () {
     const httpClient = (yield* HttpClient.HttpClient).pipe(
       HttpClient.filterStatusOk
@@ -411,7 +419,7 @@ class Session extends Effect.Service<Session>()("Session", {
 
     const semaphore = yield* Effect.makeSemaphore(1);
 
-    const timeSinceLastRefresh = yield* Ref.make<
+    const timeSinceLastRefresh = yield* Ref.make
       Option.Option<DateTime.DateTime>
     >(Option.none());
 
@@ -424,22 +432,25 @@ class Session extends Effect.Service<Session>()("Session", {
       semaphore.withPermits(1)
     );
 
+    // The returned object defines the shape of the Session service in the Context
     return {
       refreshSession,
       getTokens
     };
-  }),
-  dependencies: [FetchHttpClient.layer]
+  })
 }) {}
 
 class CustomHttpClient extends Effect.Service<CustomHttpClient>()(
   "CustomHttpClient",
   {
+    dependencies: [FetchHttpClient.layer, Session.Default],
     effect: Effect.gen(function* () {
       const session = yield* Session;
 
+      // Returns an HttpClient.HttpClient as the service implementation
       return (yield* HttpClient.HttpClient).pipe(
         HttpClient.filterStatusOk,
+        // Transforms each request by applying an Effect
         HttpClient.mapRequestEffect((request) =>
           Effect.gen(function* () {
             const tokens = yield* session.getTokens;
@@ -450,12 +461,14 @@ class CustomHttpClient extends Effect.Service<CustomHttpClient>()(
             );
           })
         ),
+        // Intercepts errors by tag type
         HttpClient.catchTags({
           ResponseError: (error) =>
             error.response.status === 401
               ? session.refreshSession
               : Effect.fail(error)
         }),
+        // HttpClient also comes with HttpClient.retryTransient, which retries on transient errors (RequestErrors) exponentially
         HttpClient.retry({
           times: 1,
           while: (error) => error._tag === "ForceRetryError"
@@ -464,8 +477,7 @@ class CustomHttpClient extends Effect.Service<CustomHttpClient>()(
           ForceRetryError: Effect.die
         })
       );
-    }),
-    dependencies: [FetchHttpClient.layer, Session.Default]
+    })
   }
 ) {}
 ```
@@ -490,9 +502,32 @@ program.pipe(
 
 All in around 100 lines of code!
 
+---
+
+Notice the `CustomHttpClient.Default`? When using `Effect.Service`, whatever you return from `effect` will be considered the primary implementation of your service. However, if you need to substitute your service - maybe for testing purposes - you can use the `CustomHttpClient` Tag to tell Effect that you want to construct another implementation using the same Shape dictated by what you returned from `effect`.
+
+In other words, you can do this:
+
+```ts
+const OtherImpl = Layer.effect(
+  CustomHttpClient, // The Tag of the
+  // service
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient;
+    return CustomHttpClient.make(client); // we use .make(), which basically does an
+    // Object.assign(client, { _tag: "CustomHttpClient" }) behind the scenes
+    // Effect.Service does this for us implicitly for the Default layer
+  })
+);
+```
+
+Also, you might've noticed the `Effect.scoped`. Effect has a `Scope` type, which basically allows you to add finalizers to your code (that run backwards, so FILO, first in, last out). Effect guarantees that all finalizers are executed, and `Effect.scoped` dictates WHEN the finalizers should be executed. You can have it at the top level of all of your computations, or locally defined, it all depends on what you need to achieve. Making a request requires the use of `Scope`, to run a finalizer once a response has been received. This allows you to cleanup resources in a type-safe and robust manner.
+
+That's what makes Effect so powerful - the `R` type parameter isn't just for services, but for any contextual dependencies. For example, you could define a Tag for an HTTP request, allowing your endpoints to access the incoming request without passing it through every function call. You could even use the `R` channel to implement permission policies, where certain computations explicitly require specific permissions in their type signature. This way, consumers know exactly what they need to provide, and you can enforce these requirements at runtime with policy guards while maintaining clean type signatures. These are more advanced patterns that we can explore another time, but they showcase how Effect's design enables sophisticated dependency management without sacrificing type safety or code clarity.
+
 ## Conclusion
 
-What I love about Effect is how it lets me focus on business logic instead of getting lost in implementation details. Without Effect, this same solution would easily span 400+ lines of code, and its intent wouldn't be nearly as clear at first glance.
+All in all, what I love about Effect is how it lets me focus on business logic instead of getting lost in implementation details. Without Effect, this same solution would easily span 400+ lines of code, and its intent wouldn't be nearly as clear at first glance.
 
 In the end, it's all about the scope of the project. If what you're doing is a simple CLI, a basic front-end, simple authenticated APIs acting as proxies, or whatever along these lines, Effect can be "overkill".
 
