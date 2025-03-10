@@ -510,8 +510,7 @@ In other words, you can do this:
 
 ```ts
 const OtherImpl = Layer.effect(
-  CustomHttpClient, // The Tag of the
-  // service
+  CustomHttpClient, // The Tag of the service
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient;
     return CustomHttpClient.make(client); // we use .make(), which basically does an
