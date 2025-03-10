@@ -402,8 +402,10 @@ class Session extends Effect.Service<Session>()("Session", {
   dependencies: [FetchHttpClient.layer],
 
   // Creates a Layer<Session, #E, #R> - a blueprint for constructing the Session service
-  // Layer<A, E, R> represents a recipe to build service A, possibly failing with error E, requiring dependencies R
-  // It's basically an Effect.Effect<A, E, R> for constructors - you can retry layers, merge them, and more.
+  // Layer<A, E, R> represents a recipe to build service A,
+  // possibly failing with error E, requiring dependencies R.
+  // It's basically an Effect.Effect<A, E, R> for constructors:
+  // You can retry layers, merge them, and more.
   effect: Effect.gen(function* () {
     const httpClient = (yield* HttpClient.HttpClient).pipe(
       HttpClient.filterStatusOk
@@ -433,7 +435,9 @@ class Session extends Effect.Service<Session>()("Session", {
       semaphore.withPermits(1)
     );
 
-    // The returned object defines the shape of the Session service in the Context
+    // The returned object defines the shape of the Session service
+    // in the Context. It's what you'll get when you do `yield* Session`
+    // in your computations.
     return {
       refreshSession,
       getTokens
