@@ -265,7 +265,7 @@ Where this approach really shines is in composing policies. We can create comple
  * Composes multiple policies with AND semantics - all policies must pass.
  */
 export const all = <E, R>(
-  policies: NonEmptyReadonlyArray<Policy<E, R>>
+  ...policies: NonEmptyReadonlyArray<Policy<E, R>>
 ): Policy<E, R> =>
   Effect.all(policies, {
     concurrency: 1,
@@ -276,7 +276,7 @@ export const all = <E, R>(
  * Composes multiple policies with OR semantics - at least one policy must pass.
  */
 export const any = <E, R>(
-  policies: NonEmptyReadonlyArray<Policy<E, R>>
+  ...policies: NonEmptyReadonlyArray<Policy<E, R>>
 ): Policy<E, R> => Effect.firstSuccessOf(policies);
 ```
 
@@ -285,19 +285,19 @@ These combinators let us express complex authorization rules clearly:
 ```typescript
 // User must have both permissions to access this endpoint
 const restrictedEndpoint = Effect.promise(() => /* sensitive operation */).pipe(
-  Policy.withPolicy(Policy.all([
+  Policy.withPolicy(Policy.all(
     Policy.permission("admin:access"),
     Policy.permission("sensitive:read")
-  ]))
+  ))
 );
 
 // User can access this endpoint with either permission
 const flexibleEndpoint = Effect.promise(() => /* common operation */).pipe(
   Policy.withPolicy(
-    Policy.any([
+    Policy.any(
       Policy.permission("posts:read"),
       Policy.permission("comments:read")
-    ])
+    )
   )
 );
 ```
@@ -344,10 +344,10 @@ it.effect("grants access when user has any required permission", () =>
   Effect.gen(function* () {
     const result = yield* Effect.succeed("allowed").pipe(
       Policy.withPolicy(
-        Policy.any([
+        Policy.any(
           Policy.permission("posts:read"),
           Policy.permission("comments:manage")
-        ])
+        )
       ),
       Effect.exit
     );
@@ -408,10 +408,10 @@ export class PostsPolicy extends Effect.Service<PostsPolicy>()("PostsPolicy", {
 
     // Combine permission and attribute checks
     const canEdit = (postId: string) =>
-      Policy.any([
+      Policy.any(
         Policy.permission("posts:manage"), // Admins can edit any post
         isOwner(postId) // Authors can edit their own posts
-      ]);
+      );
 
     return {
       isOwner,
