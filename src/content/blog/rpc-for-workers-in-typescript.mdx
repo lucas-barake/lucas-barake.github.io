@@ -39,7 +39,8 @@ import * as Rpc from "@effect/rpc/Rpc";
 import * as RpcGroup from "@effect/rpc/RpcGroup";
 import * as Schema from "effect/Schema";
 
-// Define potential errors using Schema.TaggedError - makes them serializable and easy to handle
+// Define potential errors using Schema.TaggedError
+// (makes them serializable and easy to handle)
 export class FilterError extends Schema.TaggedError<FilterError>()(
   "FilterError",
   {
@@ -208,7 +209,8 @@ import MyWorker from "./worker.ts?worker";
 const RpcProtocol = RpcClient.layerProtocolWorker({
   // How many worker instances should we manage in our pool?
   size: 1,
-  // How many requests can one worker handle at the same time? (Usually 1 for CPU tasks)
+  // How many requests can one worker handle at the same time?
+  // (Usually 1 for CPU tasks)
   concurrency: 1
 }).pipe(
   // Tell the client *how* to create a new Worker instance when needed
