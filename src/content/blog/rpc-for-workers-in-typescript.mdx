@@ -24,7 +24,7 @@ Basically, the standard Worker API leaves you to rebuild a lot of infrastructure
 
 This is where Effect RPC (`@effect/rpc`) comes in handy, especially if you're already using the Effect ecosystem.
 
-Effect RPC, along with `@effect/platform`, gives you a structured way to talk between the main thread and workers. You define a clear contract using schemas, and Effect handles the messy parts: serialization, routing requests, propagating errors, and even managing concurrency – all with type safety from end to end. Instead of manual postMessage chaos, you get a clean client that makes calling your worker feel like any other asynchronous operation.
+Effect RPC, along with `@effect/platform`, gives you a structured way to talk between the main thread and workers. You define a clear contract using schemas, and Effect handles the messy parts: serialization, routing requests, propagating errors, and even managing concurrency – all with type safety from end to end. Instead of manual `postMessage` chaos, you get a clean client that makes calling your worker feel like any other asynchronous operation.
 
 The cool thing? Effect RPC is protocol agnostic. You can use it for Web Workers, WebSockets, HTTP, etc. Whatever you need.
 
