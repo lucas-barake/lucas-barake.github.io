@@ -52,10 +52,12 @@ export class FilterError extends Schema.TaggedError<FilterError>()(
 export class WorkerRpc extends RpcGroup.make(
   // Define the 'filterData' procedure
   Rpc.make("filterData", {
-    success: Schema.Array(Schema.Number), // What a successful call returns
-    error: FilterError, // What typed errors this call can fail with
+    // What a successful call returns
+    success: Schema.Array(Schema.Number),
+    // What typed errors this call can fail with
+    error: FilterError,
+    // What data this call needs
     payload: {
-      // What data this call needs
       data: Schema.Array(Schema.Number),
       threshold: Schema.Number
     }
@@ -63,7 +65,8 @@ export class WorkerRpc extends RpcGroup.make(
   // Define the 'calculatePrimes' procedure
   Rpc.make("calculatePrimes", {
     success: Schema.Number,
-    error: Schema.Never, // This one isn't expected to fail with a specific *typed* error
+    // This one isn't expected to fail with a specific *typed* error
+    error: Schema.Never,
     payload: {
       upperBound: Schema.Number
     }
@@ -123,7 +126,8 @@ const Live = WorkerRpc.toLayer(
           if (req.threshold < 0) {
             yield* Effect.logError("Worker received invalid threshold");
             // To fail with a typed error, we return it wrapped in Effect.fail
-            // (or just return the error instance directly here thanks to TaggedError being yieldable)
+            // (or just return the error instance directly here
+            // thanks to TaggedError being yieldable)
             return yield* new FilterError({
               message: "Threshold cannot be negative"
             });
@@ -162,15 +166,15 @@ const Live = WorkerRpc.toLayer(
   })
 );
 
-// Configure the RpcServer Layer to run in the worker
-const RpcWorkerServer = RpcServer.layer(WorkerRpc) // Start with the base server for our contract
-  .pipe(
-    Layer.provide(Live), // Plug in our actual implementations
-    // Tell the server to use the standard Worker communication channel
-    Layer.provide(RpcServer.layerProtocolWorkerRunner),
-    // Provide the browser-specific parts needed to run in a worker context
-    Layer.provide(BrowserWorkerRunner.layer)
-  );
+// Define our RPC Server Configuration
+const RpcWorkerServer = RpcServer.layer(WorkerRpc).pipe(
+  // Plug in our actual implementations
+  Layer.provide(Live),
+  // Tell the server to use the standard Worker communication channel
+  Layer.provide(RpcServer.layerProtocolWorkerRunner),
+  // Provide the browser-specific parts needed to run in a worker context
+  Layer.provide(BrowserWorkerRunner.layer)
+);
 
 // Start the worker runtime
 BrowserRuntime.runMain(
@@ -215,7 +219,8 @@ const RpcProtocol = RpcClient.layerProtocolWorker({
 }).pipe(
   // Tell the client *how* to create a new Worker instance when needed
   Layer.provide(BrowserWorker.layerPlatform(() => new MyWorker())),
-  Layer.orDie // If setting up the protocol fails, it's a critical error
+  // If setting up the protocol fails, it's a critical error
+  Layer.orDie
 );
 
 // Define an Effect Service to make the client easily injectable and testable
@@ -225,7 +230,8 @@ export class WorkerClient extends Effect.Service<WorkerClient>()(
     // This service depends on the RpcProtocol layer
     dependencies: [RpcProtocol],
     scoped: Effect.gen(function* () {
-      // Create the client instance using our contract. It needs the RpcProtocol layer.
+      // Create the client instance using our contract.
+      // It needs the RpcProtocol layer.
       const client = yield* RpcClient.make(WorkerRpc);
       // Expose the client through this service
       return {
@@ -254,7 +260,8 @@ import * as Effect from "effect/Effect";
 import { WorkerClient } from "./worker-service"; // Import our service
 
 const program = Effect.gen(function* () {
-  const { client } = yield* WorkerClient; // Access the RPC client via the service
+  // Access the RPC client via the service
+  const { client } = yield* WorkerClient;
 
   const largeData = Array.from({ length: 1_000_000 }, (_, i) => i);
   const filterThreshold = 999_990;
@@ -285,7 +292,8 @@ const program = Effect.gen(function* () {
 program
   .pipe(
     Effect.provide(WorkerClient.Default),
-    Effect.runPromise // Or runFork, runSync, etc.
+    // Or runFork, runSync, etc.
+    Effect.runPromise
   )
   .then((finalResult) => {
     console.log("Final filtered result count:", finalResult.length);
