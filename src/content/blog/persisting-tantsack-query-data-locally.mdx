@@ -74,7 +74,7 @@ The limitation here is that Zod only handles one-way parsing. You need separate 
 This is where Effect Schema really shines. Instead of maintaining two separate schemas, Effect Schema lets us define a single schema that handles both parsing and transformation bi-directionally:
 
 ```ts
-import { Schema } from "@effect/schema";
+import * as Schema from "effect/Schema";
 
 const Todo = Schema.Struct({
   id: Schema.String,
@@ -201,7 +201,9 @@ Now that we understand Effect Schema's core concepts, let's create our IndexedDB
 
 ```ts
 import localforage from "localforage";
-import { Effect, Schema, Option } from "effect";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
 
 export class IndexedDB extends Effect.Service<IndexedDB>()("IndexedDB", {
   sync: () =>
